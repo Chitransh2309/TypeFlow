@@ -44,6 +44,7 @@ export function useTypingTest(config: TestConfig) {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastWpmUpdateRef = useRef<number>(-1);
 
   // Generate words locally
   const generateWords = useCallback(() => {
@@ -72,6 +73,7 @@ export function useTypingTest(config: TestConfig) {
     setElapsedTime(0);
     setStats(null);
     setWpmHistory([]);
+    lastWpmUpdateRef.current = -1;
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -104,13 +106,13 @@ export function useTypingTest(config: TestConfig) {
 
     const totalChars = correctChars + incorrectChars;
     const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
-    const timeInMinutes = elapsedTime / 60 || 1 / 60;
+    const timeInMinutes = Math.max(elapsedTime / 60, 1 / 60);
     const wpm = Math.round((correctChars / 5) / timeInMinutes);
     const rawWpm = Math.round((allTyped.length / 5) / timeInMinutes);
 
     // Calculate consistency (standard deviation of WPM)
-    const avgWpm = wpmHistory.reduce((a, b) => a + b, 0) / (wpmHistory.length || 1);
-    const variance = wpmHistory.reduce((sum, w) => sum + Math.pow(w - avgWpm, 2), 0) / (wpmHistory.length || 1);
+    const avgWpm = wpmHistory.length > 0 ? wpmHistory.reduce((a, b) => a + b, 0) / wpmHistory.length : 0;
+    const variance = wpmHistory.length > 0 ? wpmHistory.reduce((sum, w) => sum + Math.pow(w - avgWpm, 2), 0) / wpmHistory.length : 0;
     const stdDev = Math.sqrt(variance);
     const consistency = avgWpm > 0 ? Math.max(0, Math.round(100 - (stdDev / avgWpm) * 100)) : 100;
 
@@ -142,23 +144,25 @@ export function useTypingTest(config: TestConfig) {
 
   // Timer
   useEffect(() => {
-    if (isActive && !isFinished) {
+    if (isActive && !isFinished && startTime) {
       timerRef.current = setInterval(() => {
-        if (startTime) {
-          const elapsed = Math.floor((Date.now() - startTime) / 1000);
-          setElapsedTime(elapsed);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setElapsedTime(elapsed);
 
-          // Calculate current WPM for history
+        // Only add to WPM history every second and if we haven't already added for this second
+        if (elapsed !== lastWpmUpdateRef.current) {
+          lastWpmUpdateRef.current = elapsed;
+          
           const totalTyped = typedChars.flat().length;
           const currentWpm = Math.round((totalTyped / 5) / (elapsed / 60)) || 0;
           setWpmHistory((prev) => [...prev, currentWpm]);
-
-          // Check time limit
-          if (config.mode === "time" && config.timeLimit && elapsed >= config.timeLimit) {
-            finishTest();
-          }
         }
-      }, 1000);
+
+        // Check time limit
+        if (config.mode === "time" && config.timeLimit && elapsed >= config.timeLimit) {
+          finishTest();
+        }
+      }, 100);
     }
 
     return () => {
@@ -299,11 +303,29 @@ export function useTypingTest(config: TestConfig) {
     if (config.mode === "time" && config.timeLimit) {
       return (elapsedTime / config.timeLimit) * 100;
     }
-    if (config.mode === "words" && config.wordCount) {
-      return (currentWordIndex / config.wordCount) * 100;
+    
+    let totalCharsProcessed = 0;
+    let totalCharsAvailable = 0;
+
+    // Count up to current word
+    for (let i = 0; i < currentWordIndex; i++) {
+      totalCharsProcessed += (typedChars[i] || []).length;
+      totalCharsAvailable += words[i]?.length || 0;
     }
-    return (currentWordIndex / words.length) * 100;
-  }, [config.mode, config.timeLimit, config.wordCount, elapsedTime, currentWordIndex, words.length]);
+
+    // Add current word progress
+    totalCharsProcessed += currentCharIndex;
+    totalCharsAvailable += words[currentWordIndex]?.length || 0;
+
+    if (config.mode === "words" && config.wordCount) {
+      // Progress based on words
+      return ((currentWordIndex + Math.min(currentCharIndex / (words[currentWordIndex]?.length || 1), 1)) / config.wordCount) * 100;
+    }
+
+    // Progress based on total chars
+    const totalCharsInAllWords = words.reduce((sum, word) => sum + word.length, 0);
+    return totalCharsInAllWords > 0 ? (totalCharsProcessed / totalCharsInAllWords) * 100 : 0;
+  }, [config.mode, config.timeLimit, config.wordCount, elapsedTime, currentWordIndex, currentCharIndex, typedChars, words]);
 
   return {
     words,
@@ -324,3 +346,4 @@ export function useTypingTest(config: TestConfig) {
     calculateStats,
   };
 }
+
