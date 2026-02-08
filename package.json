@@ -56,7 +56,7 @@
     "lucide-react": "^0.454.0",
     "mongodb": "7.1.0",
     "mongodb-client-encryption": "latest",
-    "next": "16.0.10",
+    "next": "^16.1.6",
     "next-auth": "4.24.13",
     "next-themes": "^0.4.6",
     "nodemailer": "latest",

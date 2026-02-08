@@ -49,7 +49,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground"
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <Keyboard className="h-4 w-4" />
               <span className="hidden sm:inline">Practice</span>
@@ -59,7 +59,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground"
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <Trophy className="h-4 w-4" />
               <span className="hidden sm:inline">Leaderboard</span>
@@ -69,7 +69,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground"
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <BarChart2 className="h-4 w-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -79,7 +79,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground"
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
             >
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Settings</span>
@@ -94,7 +94,7 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="relative h-8 w-8 rounded-full"
+                    className="relative h-8 w-8 rounded-full cursor-pointer"
                   >
                     <Avatar className="h-8 w-8">
                       <AvatarImage
@@ -154,7 +154,7 @@ export function Header() {
               <Button
                 size="sm"
                 onClick={() => signIn("google")}
-                className="gap-2"
+                className="gap-2 cursor-pointer"
               >
                 <LogIn className="h-4 w-4" />
                 <span className="hidden sm:inline">Sign in</span>
