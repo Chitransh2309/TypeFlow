@@ -13,7 +13,7 @@ import { useSocketRoom } from "@/hooks/use-socket-room";
 import { Room } from "@/lib/models/room";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { getWordsData } from "@/lib/words-data";
+import { getRandomWords } from "@/lib/words-data";
 
 type RoomStatus = "loading" | "lobby" | "contest" | "finished" | "error";
 
@@ -115,16 +115,16 @@ export default function RoomPage() {
     setIsStarting(true);
     try {
       // Get test text based on room settings
-      const words = getWordsData();
       let selectedWords: string[] = [];
+      const difficulty = (room.settings.difficulty || "easy") as "easy" | "medium" | "hard";
 
       if (room.settings.mode === "words") {
         const count = room.settings.wordCount || 50;
-        selectedWords = words.slice(0, count);
+        selectedWords = getRandomWords(count, difficulty);
       } else {
         // For time-based, use more words (enough for the duration)
         const estimatedWords = (room.settings.timeLimit || 60) * 5; // assume 5 WPM at least
-        selectedWords = words.slice(0, estimatedWords);
+        selectedWords = getRandomWords(estimatedWords, difficulty);
       }
 
       const text = selectedWords.join(" ");
