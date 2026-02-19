@@ -65,6 +65,16 @@ export function Header() {
               <span className="hidden sm:inline">Leaderboard</span>
             </Button>
           </Link>
+          <Link href="/rooms">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <Trophy className="h-4 w-4" />
+              <span className="hidden sm:inline">Rooms</span>
+            </Button>
+          </Link>
           <Link href="/dashboard">
             <Button
               variant="ghost"

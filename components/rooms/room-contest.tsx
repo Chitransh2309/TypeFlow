@@ -219,7 +219,7 @@ export function RoomContest({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-1">{room.name}</h1>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             {typedText.length}/{testText.length} characters
           </p>
         </div>
@@ -235,16 +235,16 @@ export function RoomContest({
             </CardHeader>
             <CardContent>
               <div className="relative">
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 font-mono text-sm leading-relaxed mb-4 min-h-[150px]">
+                <div className="p-4 bg-muted rounded-lg border border-border font-mono text-sm leading-relaxed mb-4 min-h-[150px]">
                   {testText.split("").map((char, idx) => {
-                    let colorClass = "text-gray-400";
+                    let colorClass = "text-muted-foreground";
                     if (idx < typedText.length) {
                       colorClass =
                         typedText[idx] === char
                           ? "text-green-600 bg-green-100"
                           : "text-red-600 bg-red-100";
                     } else if (idx === typedText.length) {
-                      colorClass = "text-blue-600 bg-blue-100 animate-pulse";
+                      colorClass = "text-primary bg-primary/10 animate-pulse";
                     }
                     return (
                       <span key={idx} className={colorClass}>

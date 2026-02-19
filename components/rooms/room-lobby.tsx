@@ -44,7 +44,7 @@ export function RoomLobby({
       {/* Room Header */}
       <div>
         <h1 className="text-3xl font-bold mb-2">{room.name}</h1>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Waiting room • {room.participants.length}/{room.maxParticipants} participants
         </p>
       </div>
@@ -60,15 +60,15 @@ export function RoomLobby({
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600">Mode</p>
+                  <p className="text-sm text-muted-foreground">Mode</p>
                   <p className="font-semibold capitalize">{room.settings.mode}-based</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Difficulty</p>
+                  <p className="text-sm text-muted-foreground">Difficulty</p>
                   <p className="font-semibold capitalize">{room.settings.difficulty}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     {room.settings.mode === "time" ? "Duration" : "Words"}
                   </p>
                   <p className="font-semibold">
@@ -78,7 +78,7 @@ export function RoomLobby({
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Room Type</p>
+                  <p className="text-sm text-muted-foreground">Room Type</p>
                   <p className="font-semibold">{room.isPublic ? "Public" : "Private"}</p>
                 </div>
               </div>
@@ -98,7 +98,7 @@ export function RoomLobby({
                 {room.participants.map((participant) => (
                   <div
                     key={participant.userId}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-secondary rounded-lg"
                   >
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
@@ -109,7 +109,7 @@ export function RoomLobby({
                       </Avatar>
                       <div>
                         <p className="font-medium">{participant.userName}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           {participant.userId === room.host.userId && "Host"}
                         </p>
                       </div>
@@ -132,9 +132,9 @@ export function RoomLobby({
               <CardTitle className="text-sm">Share Room</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <p className="text-xs text-gray-600">Room Code</p>
+              <p className="text-xs text-muted-foreground">Room Code</p>
               <div className="flex gap-2">
-                <code className="flex-1 p-2 bg-gray-100 rounded font-mono text-sm font-semibold">
+                <code className="flex-1 p-2 bg-muted rounded font-mono text-sm font-semibold">
                   {room.roomId}
                 </code>
                 <Button
@@ -155,7 +155,7 @@ export function RoomLobby({
 
           {/* Host Controls */}
           {isHost && (
-            <Card className="border-blue-200 bg-blue-50">
+            <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <CardTitle className="text-sm">Host Controls</CardTitle>
               </CardHeader>
@@ -177,7 +177,7 @@ export function RoomLobby({
                     </>
                   )}
                 </Button>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted-foreground">
                   {room.participants.length < 2
                     ? "Need at least 2 participants"
                     : "Ready to start when you are!"}
@@ -197,12 +197,12 @@ export function RoomLobby({
           </Button>
 
           {/* Status */}
-          <Card className="bg-green-50 border-green-200">
+          <Card className="bg-secondary border-secondary">
             <CardContent className="pt-4">
-              <p className="text-sm text-green-800 font-medium">
+              <p className="text-sm text-foreground font-medium">
                 ✓ All participants ready
               </p>
-              <p className="text-xs text-green-600 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Waiting for host to start
               </p>
             </CardContent>
