@@ -29,7 +29,7 @@ export function UserProgressCard({
   return (
     <Card
       className={`p-4 ${
-        isCurrentUser ? "border-2 border-blue-500 bg-blue-50" : ""
+        isCurrentUser ? "border-2 border-primary bg-primary/5" : ""
       } ${isFinished ? "opacity-75" : ""}`}
     >
       {/* User Header */}
@@ -41,7 +41,7 @@ export function UserProgressCard({
           </Avatar>
           <div className="flex-1">
             <p className="font-semibold text-sm">{userName}</p>
-            {isCurrentUser && <p className="text-xs text-blue-600">You</p>}
+            {isCurrentUser && <p className="text-xs text-primary">You</p>}
           </div>
         </div>
         {isFinished && <Badge variant="secondary">Finished</Badge>}
@@ -50,8 +50,8 @@ export function UserProgressCard({
       {/* Progress Bar */}
       <div className="space-y-2 mb-4">
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-600">Progress</span>
-          <span className="text-sm font-semibold text-gray-900">{Math.round(progress)}%</span>
+          <span className="text-xs text-muted-foreground">Progress</span>
+          <span className="text-sm font-semibold text-foreground">{Math.round(progress)}%</span>
         </div>
         <Progress value={progress} className="h-2" />
       </div>
@@ -59,11 +59,11 @@ export function UserProgressCard({
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <p className="text-xs text-gray-600">WPM</p>
+          <p className="text-xs text-muted-foreground">WPM</p>
           <p className="text-lg font-bold">{Math.round(wpm)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-600">Accuracy</p>
+          <p className="text-xs text-muted-foreground">Accuracy</p>
           <p className={`text-lg font-bold ${accuracy >= 95 ? "text-green-600" : accuracy >= 90 ? "text-blue-600" : "text-orange-600"}`}>
             {accuracy.toFixed(1)}%
           </p>

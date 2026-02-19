@@ -107,9 +107,34 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
       options.onContestFinished?.(data);
     });
 
-    // Cleanup
+    // Cleanup on unmount
     return () => {
+      // Emit leave room event before disconnecting
+      if (options.roomId && options.userId) {
+        socket.emit("leave:room", {
+          roomId: options.roomId,
+          userId: options.userId,
+        });
+      }
       socket.disconnect();
+    };
+  }, [options.roomId, options.userId]);
+
+  // Handle page unload (closing tab/browser)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (socketRef.current && options.roomId && options.userId) {
+        // Emit leave room event
+        socketRef.current.emit("leave:room", {
+          roomId: options.roomId,
+          userId: options.userId,
+        });
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [options.roomId, options.userId]);
 

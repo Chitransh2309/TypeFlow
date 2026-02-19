@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Spinner } from "@/components/ui/spinner";
 import { Loader2, Lock, Users, Clock, BarChart3 } from "lucide-react";
 import { Room } from "@/lib/models/room";
 
@@ -97,7 +98,7 @@ export function RoomBrowser() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner className="h-8 w-8 text-primary" />
       </div>
     );
   }

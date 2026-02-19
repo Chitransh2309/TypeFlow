@@ -12,7 +12,7 @@ import {
 import { useSocketRoom } from "@/hooks/use-socket-room";
 import { Room } from "@/lib/models/room";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { getRandomWords } from "@/lib/words-data";
 
 type RoomStatus = "loading" | "lobby" | "contest" | "finished" | "error";
@@ -37,6 +37,7 @@ export default function RoomPage() {
     sendProgress,
     startContest,
     endContest,
+    leaveRoom: socketLeaveRoom,
   } = useSocketRoom({
     roomId: hasJoined ? roomId : undefined,
     userId: session?.user?.id,
@@ -112,11 +113,41 @@ export default function RoomPage() {
   const handleStartContest = async () => {
     if (!session?.user?.id || !room) return;
 
+    // Check if user is host
+    if (room.host.userId !== session.user.id) {
+      toast({
+        title: "Error",
+        description: "Only the host can start the contest",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check minimum participants
+    if (room.participants.length < 2) {
+      toast({
+        title: "Error",
+        description: "Need at least 2 participants to start",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check room status
+    if (room.status !== "waiting") {
+      toast({
+        title: "Error",
+        description: "Contest has already started or finished",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsStarting(true);
     try {
       // Get test text based on room settings
       let selectedWords: string[] = [];
-      const difficulty = (room.settings.difficulty || "easy") as "easy" | "medium" | "hard";
+      const difficulty = (room.settings.difficulty || "normal") as "easy" | "normal" | "hard";
 
       if (room.settings.mode === "words") {
         const count = room.settings.wordCount || 50;
@@ -137,7 +168,8 @@ export default function RoomPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to start contest");
+        const error = await res.json();
+        throw new Error(error.error || "Failed to start contest");
       }
 
       // Emit socket event
@@ -162,6 +194,9 @@ export default function RoomPage() {
     if (!session?.user?.id) return;
 
     try {
+      // Emit socket event to notify server
+      socketLeaveRoom(roomId, session.user.id);
+
       await fetch(`/api/rooms/${roomId}/leave`, {
         method: "POST",
       });
@@ -175,6 +210,16 @@ export default function RoomPage() {
       });
     }
   };
+
+  // Cleanup on page unload or component unmount
+  useEffect(() => {
+    return () => {
+      // Attempt to leave room when component unmounts
+      if (hasJoined && session?.user?.id) {
+        socketLeaveRoom(roomId, session.user.id);
+      }
+    };
+  }, [hasJoined, roomId, session?.user?.id, socketLeaveRoom]);
 
   const handleEndContest = async () => {
     if (!session?.user?.id || !room) return;
@@ -197,7 +242,7 @@ export default function RoomPage() {
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <Spinner className="h-8 w-8 text-primary" />
         </main>
       </div>
     );

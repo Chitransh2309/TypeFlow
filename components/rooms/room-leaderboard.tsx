@@ -79,10 +79,10 @@ export function RoomLeaderboard({
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <Trophy className="h-8 w-8 text-yellow-500" />
+          <Trophy className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold">Contest Results</h1>
         </div>
-        <p className="text-gray-600">{room.name}</p>
+        <p className="text-muted-foreground">{room.name}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -91,7 +91,7 @@ export function RoomLeaderboard({
           {results.length === 0 ? (
             <Card>
               <CardContent className="pt-6">
-                <p className="text-center text-gray-500">
+                <p className="text-center text-muted-foreground">
                   No results yet
                 </p>
               </CardContent>
@@ -102,7 +102,7 @@ export function RoomLeaderboard({
                 key={result._id}
                 className={`${
                   result.userId === session?.user?.id
-                    ? "border-2 border-blue-500 bg-blue-50"
+                    ? "border-2 border-primary bg-primary/5"
                     : ""
                 }`}
               >
@@ -116,7 +116,7 @@ export function RoomLeaderboard({
                             {getMedalEmoji(idx + 1)}
                           </span>
                         ) : (
-                          <span className="text-xl font-bold text-gray-500">
+                          <span className="text-xl font-bold text-muted-foreground">
                             #{idx + 1}
                           </span>
                         )}
@@ -131,7 +131,7 @@ export function RoomLeaderboard({
 
                       <div className="flex-1">
                         <p className="font-semibold">{result.userName}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           {result.elapsedTime.toFixed(1)}s
                         </p>
                       </div>
@@ -140,11 +140,11 @@ export function RoomLeaderboard({
                     {/* Stats */}
                     <div className="flex items-center gap-6">
                       <div className="text-right">
-                        <p className="text-sm text-gray-600">WPM</p>
+                        <p className="text-sm text-muted-foreground">WPM</p>
                         <p className="text-2xl font-bold">{result.wpm}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-600">Accuracy</p>
+                        <p className="text-sm text-muted-foreground">Accuracy</p>
                         <p
                           className={`text-2xl font-bold ${
                             result.accuracy >= 95
@@ -174,23 +174,23 @@ export function RoomLeaderboard({
         <div className="space-y-4">
           {/* Your Score */}
           {currentUserResult && (
-            <Card className="bg-blue-50 border-blue-200">
+            <Card className="bg-primary/5 border-primary/20">
               <CardHeader>
                 <CardTitle className="text-lg">Your Score</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-600">Position</p>
+                    <p className="text-sm text-muted-foreground">Position</p>
                     <p className="text-3xl font-bold">#{currentUserResult.position}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">WPM</p>
+                    <p className="text-sm text-muted-foreground">WPM</p>
                     <p className="text-3xl font-bold">{currentUserResult.wpm}</p>
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Accuracy</p>
+                  <p className="text-sm text-muted-foreground">Accuracy</p>
                   <p className="text-2xl font-bold text-green-600">
                     {currentUserResult.accuracy.toFixed(1)}%
                   </p>
@@ -206,17 +206,17 @@ export function RoomLeaderboard({
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Participants</span>
+                <span className="text-muted-foreground">Participants</span>
                 <span className="font-semibold">{results.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Winner WPM</span>
+                <span className="text-muted-foreground">Winner WPM</span>
                 <span className="font-semibold">
                   {results[0]?.wpm || "-"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Avg Accuracy</span>
+                <span className="text-muted-foreground">Avg Accuracy</span>
                 <span className="font-semibold">
                   {results.length > 0
                     ? (
