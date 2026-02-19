@@ -6,6 +6,7 @@ import { Header } from "@/components/header";
 import { CreateRoomDialog } from "@/components/rooms/create-room-dialog";
 import { JoinRoomDialog } from "@/components/rooms/join-room-dialog";
 import { RoomBrowser } from "@/components/rooms/room-browser";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function RoomsPage() {
   const { data: session, status } = useSession();
@@ -13,7 +14,7 @@ export default function RoomsPage() {
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin">Loading...</div>
+        <Spinner className="h-8 w-8 text-primary" />
       </div>
     );
   }
