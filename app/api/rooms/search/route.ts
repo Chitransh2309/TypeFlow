@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getRoomById } from "@/lib/rooms";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,20 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Search for room by roomId (code)
-    const room = await db.room.findUnique({
-      where: { roomId: code.toUpperCase() },
-      select: {
-        roomId: true,
-        name: true,
-        isPublic: true,
-        settings: true,
-        maxParticipants: true,
-        status: true,
-        participants: {
-          select: { userId: true },
-        },
-      },
-    });
+    const room = await getRoomById(code.toUpperCase());
 
     if (!room) {
       return NextResponse.json(
