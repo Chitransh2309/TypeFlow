@@ -12,7 +12,7 @@ import {
 import { useSocketRoom } from "@/hooks/use-socket-room";
 import { Room } from "@/lib/models/room";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { getRandomWords } from "@/lib/words-data";
 
 type RoomStatus = "loading" | "lobby" | "contest" | "finished" | "error";
@@ -242,7 +242,7 @@ export default function RoomPage() {
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <Spinner className="h-8 w-8 text-primary" />
         </main>
       </div>
     );
