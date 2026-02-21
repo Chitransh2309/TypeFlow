@@ -3,6 +3,8 @@
 import React from "react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { getRandomWords, getRandomQuote } from "@/lib/words-data";
+import { loadSettings, type UserSettings, DEFAULT_SETTINGS} from "@/lib/settings-store";
+import { initTypingSound, playTypingSound } from "./typing-sound";
 
 export type TestMode = "time" | "words" | "quote";
 export type Difficulty = "easy" | "medium" | "hard";
@@ -31,6 +33,7 @@ interface CharState {
 }
 
 export function useTypingTest(config: TestConfig) {
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [words, setWords] = useState<string[]>([]);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
@@ -56,6 +59,12 @@ export function useTypingTest(config: TestConfig) {
       setWords(getRandomWords(wordCount, config.difficulty));
     }
   }, [config.mode, config.difficulty, config.wordCount]);
+
+  useEffect(() => {
+    const s = loadSettings();
+    setSettings(s);
+    initTypingSound();
+  }, []);
 
   // Initialize test
   useEffect(() => {
@@ -177,6 +186,10 @@ export function useTypingTest(config: TestConfig) {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (isFinished) return;
 
+      if (settings.soundEnabled && (e.key.length === 1 || e.key === "Backspace" || e.key === " ")) {
+        const normalizedVolume = (settings.soundVolume / 100);
+        playTypingSound(normalizedVolume);
+      }
       // Start test on first key
       if (!isActive && !e.ctrlKey && !e.metaKey && e.key.length === 1) {
         setIsActive(true);

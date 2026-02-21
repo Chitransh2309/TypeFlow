@@ -65,7 +65,7 @@ export function Header() {
               <span className="hidden sm:inline">Leaderboard</span>
             </Button>
           </Link>
-          <Link href="/rooms">
+          {/* <Link href="/rooms">
             <Button
               variant="ghost"
               size="sm"
@@ -74,7 +74,7 @@ export function Header() {
               <Trophy className="h-4 w-4" />
               <span className="hidden sm:inline">Rooms</span>
             </Button>
-          </Link>
+          </Link> */}
           <Link href="/dashboard">
             <Button
               variant="ghost"

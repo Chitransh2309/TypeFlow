@@ -287,18 +287,18 @@ export default function SettingsPage() {
                 </div>
                 <Switch id="progress-bar" checked={settings.showProgressBar} onCheckedChange={(v) => update("showProgressBar", v)} />
               </div>
-              <div className="flex items-center justify-between">
+              {/* <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="smooth-caret">Smooth Caret</Label>
                   <p className="text-sm text-muted-foreground">Animate the caret movement</p>
                 </div>
                 <Switch id="smooth-caret" checked={settings.smoothCaret} onCheckedChange={(v) => update("smoothCaret", v)} />
-              </div>
+              </div> */}
             </CardContent>
           </Card>
 
           {/* Keyboard */}
-          <Card className="bg-card/50 border-border/50">
+          {/* <Card className="bg-card/50 border-border/50">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Keyboard className="h-5 w-5" />
@@ -322,7 +322,7 @@ export default function SettingsPage() {
                 </Select>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Test Defaults */}
           <Card className="bg-card/50 border-border/50">
