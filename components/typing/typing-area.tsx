@@ -2,8 +2,9 @@
 
 import React from "react";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/lib/settings-context";
 
 interface CharState {
   char: string;
@@ -33,23 +34,58 @@ export function TypingArea({
 }: TypingAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
+  const { settings } = useSettings();
+  const [caretFaded, setCaretFaded] = useState(false);
 
   // Auto-scroll to keep current word visible
   useEffect(() => {
     if (activeWordRef.current && containerRef.current) {
       const container = containerRef.current;
       const activeWord = activeWordRef.current;
-      const containerRect = container.getBoundingClientRect();
-      const wordRect = activeWord.getBoundingClientRect();
 
-      if (
-        wordRect.top < containerRect.top ||
-        wordRect.bottom > containerRect.bottom
-      ) {
-        activeWord.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      // Check visibility
+      const checkVisibility = () => {
+        const containerRect = container.getBoundingClientRect();
+        const wordRect = activeWord.getBoundingClientRect();
+
+        const isOutOfView =
+          wordRect.top < containerRect.top ||
+          wordRect.bottom > containerRect.bottom;
+
+        // Check if word is scrolled above the visible area (past the top)
+        // Add small buffer (5px) to handle edge cases
+        const isScrolledAbove = wordRect.bottom < containerRect.top - 5;
+        setCaretFaded(isScrolledAbove);
+
+        if (isOutOfView) {
+          activeWord.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      };
+
+      // Check immediately
+      checkVisibility();
+
+      // Re-check after scroll animation completes
+      const timer = setTimeout(checkVisibility, 500);
+      return () => clearTimeout(timer);
     }
   }, [currentWordIndex]);
+
+  // Also check visibility on scroll events
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !activeWordRef.current) return;
+
+    const handleScroll = () => {
+      const containerRect = container.getBoundingClientRect();
+      const wordRect = activeWordRef.current!.getBoundingClientRect();
+      const isScrolledAbove = wordRect.bottom < containerRect.top - 5;
+      setCaretFaded(isScrolledAbove);
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Focus input on mount
   useEffect(() => {
@@ -110,7 +146,11 @@ export function TypingArea({
                     "typing-char inline-block",
                     charState.state === "correct" && "typing-correct",
                     charState.state === "incorrect" && "typing-incorrect",
-                    charState.state === "current" && "typing-current",
+                    charState.state === "current" &&
+                      `typing-current caret-${settings.caretStyle}`,
+                    charState.state === "current" &&
+                      caretFaded &&
+                      "caret-faded",
                     charState.state === "upcoming" && "typing-upcoming"
                   )}
                 >
