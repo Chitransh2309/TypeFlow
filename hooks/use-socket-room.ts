@@ -25,6 +25,9 @@ interface UseSocketRoomOptions {
   onProgressUpdate?: (progress: ProgressUpdate) => void;
   onUserFinished?: (data: { userId: string; wpm: number; accuracy: number; elapsedTime: number }) => void;
   onContestFinished?: (data: { finishedAt: Date }) => void;
+  onRoomDeleted?: (data: { message: string }) => void;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
 }
 
 export function useSocketRoom(options: UseSocketRoomOptions) {
@@ -36,8 +39,11 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     // Only initialize if we have roomId and userId
     if (!options.roomId || !options.userId) return;
 
+    // Get the correct socket server URL with fallback
+    const socketUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+
     // Initialize socket connection
-    const socket = io(process.env.NEXT_PUBLIC_APP_URL || "", {
+    const socket = io(socketUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -51,6 +57,7 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     socket.on("connect", () => {
       console.log("[Socket] Connected");
       setIsConnected(true);
+      options.onConnected?.();
 
       // Join the room
       socket.emit(
@@ -71,6 +78,7 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     socket.on("disconnect", () => {
       console.log("[Socket] Disconnected");
       setIsConnected(false);
+      options.onDisconnected?.();
     });
 
     socket.on("connect_error", (error: any) => {
@@ -107,6 +115,10 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
       options.onContestFinished?.(data);
     });
 
+    socket.on("room:deleted", (data) => {
+      options.onRoomDeleted?.(data);
+    });
+
     // Cleanup on unmount
     return () => {
       // Emit leave room event before disconnecting
@@ -116,9 +128,9 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
           userId: options.userId,
         });
       }
-      socket.disconnect();
+      socket.disconnect(true); // Force disconnect
     };
-  }, [options.roomId, options.userId]);
+  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
 
   // Handle page unload (closing tab/browser)
   useEffect(() => {
@@ -129,12 +141,28 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
           roomId: options.roomId,
           userId: options.userId,
         });
+        // Force immediate disconnect
+        socketRef.current.disconnect(true);
+      }
+    };
+
+    const handleUnload = () => {
+      if (socketRef.current && options.roomId && options.userId) {
+        // Emit leave room event
+        socketRef.current.emit("leave:room", {
+          roomId: options.roomId,
+          userId: options.userId,
+        });
+        // Force immediate disconnect
+        socketRef.current.disconnect(true);
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("unload", handleUnload);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("unload", handleUnload);
     };
   }, [options.roomId, options.userId]);
 

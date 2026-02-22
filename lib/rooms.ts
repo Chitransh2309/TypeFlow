@@ -161,51 +161,35 @@ export async function joinRoom(
 export async function leaveRoom(
   roomId: string,
   userId: string
-): Promise<void> {
+): Promise<{ deleted: boolean }> {
   const collection = await getRoomsCollection();
   const room = await getRoomById(roomId);
 
-  if (!room) return;
+  if (!room) return { deleted: false };
+
+  // If host leaves, always delete the room (regardless of status or participant count)
+  if (room.host.userId === userId) {
+    await collection.deleteOne({ roomId });
+    return { deleted: true };
+  }
 
   // If room hasn't started and user is the only one, delete the room
   if (room.status === "waiting" && room.participants.length === 1) {
     await collection.deleteOne({ roomId });
-    return;
+    return { deleted: true };
   }
 
-  // If host leaves, transfer to another user or delete room
-  if (room.host.userId === userId && room.status === "waiting") {
-    const otherParticipants = room.participants.filter((p) => p.userId !== userId);
-    if (otherParticipants.length > 0) {
-      const newHost = otherParticipants[0];
-      await collection.updateOne(
-        { roomId },
-        {
-          $set: {
-            host: {
-              userId: newHost.userId,
-              userName: newHost.userName,
-              userImage: newHost.userImage,
-            },
-          },
-          $pull: {
-            participants: { userId },
-          },
-        }
-      );
-    } else {
-      await collection.deleteOne({ roomId });
+  // Regular participant leaves
+  await collection.updateOne(
+    { roomId },
+    {
+      $pull: {
+        participants: { userId },
+      },
     }
-  } else {
-    await collection.updateOne(
-      { roomId },
-      {
-        $pull: {
-          participants: { userId },
-        },
-      }
-    );
-  }
+  );
+
+  return { deleted: false };
 }
 
 // Start contest

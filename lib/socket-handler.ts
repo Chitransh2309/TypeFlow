@@ -94,15 +94,22 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
     });
 
     // Leave room
-    socket.on("leave:room", async (data: { roomId: string; userId: string }) => {
+    socket.on("leave:room", async (data: { roomId: string; userId: string; isHost?: boolean }) => {
       try {
-        const { roomId, userId } = data;
+        const { roomId, userId, isHost } = data;
 
         socketToUser.delete(socket.id);
         socket.leave(`room:${roomId}`);
 
-        // Notify others that user left
-        io!.to(`room:${roomId}`).emit("user:left", { userId });
+        // If host leaves, emit room:deleted to all clients
+        if (isHost) {
+          io!.to(`room:${roomId}`).emit("room:deleted", {
+            message: "Host left the room - room has been deleted",
+          });
+        } else {
+          // Notify others that user left
+          io!.to(`room:${roomId}`).emit("user:left", { userId });
+        }
 
         // If room is empty or no one is in the room, clean up
         const roomClients = await io!.to(`room:${roomId}`).fetchSockets();
