@@ -62,6 +62,9 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
 
       // Join the room
       console.log("[v0] Attempting to join room:", options.roomId);
+      
+      let timeoutId: NodeJS.Timeout | null = null;
+      
       socket.emit(
         "join:room",
         {
@@ -70,6 +73,8 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
           userName: options.userName,
         },
         (response: any) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          
           if (!response.success) {
             console.log("[v0] Join room error:", response.error);
             setError(response.error);
@@ -78,6 +83,12 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
           }
         }
       );
+      
+      // Set 10 second timeout for join:room callback
+      timeoutId = setTimeout(() => {
+        console.log("[v0] Join room timeout - no response from server");
+        setError("Failed to join room - timeout");
+      }, 10000);
     });
 
     socket.on("disconnect", () => {
@@ -143,35 +154,48 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
 
   // Handle page unload (closing tab/browser)
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = () => {
       if (socketRef.current && options.roomId && options.userId) {
+        console.log("[v0] beforeunload - disconnecting socket");
         // Emit leave room event
         socketRef.current.emit("leave:room", {
           roomId: options.roomId,
           userId: options.userId,
+        }, () => {
+          console.log("[v0] Leave room callback received");
         });
-        // Force immediate disconnect
+        // Force immediate disconnect without waiting for acknowledgement
         socketRef.current.disconnect(true);
       }
     };
 
     const handleUnload = () => {
       if (socketRef.current && options.roomId && options.userId) {
-        // Emit leave room event
+        console.log("[v0] unload - disconnecting socket");
+        // Disconnect without emitting at this point (beforeunload should have done it)
+        socketRef.current.disconnect(true);
+      }
+    };
+
+    const handlePageHide = () => {
+      if (socketRef.current && options.roomId && options.userId) {
+        console.log("[v0] pagehide - disconnecting socket");
         socketRef.current.emit("leave:room", {
           roomId: options.roomId,
           userId: options.userId,
         });
-        // Force immediate disconnect
         socketRef.current.disconnect(true);
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("unload", handleUnload);
+    document.addEventListener("pagehide", handlePageHide);
+    
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("unload", handleUnload);
+      document.removeEventListener("pagehide", handlePageHide);
     };
   }, [options.roomId, options.userId]);
 
@@ -202,15 +226,25 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
   const startContest = (roomId: string, userId: string, testText: string) => {
     if (!socketRef.current) return;
 
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     socketRef.current.emit(
       "start:contest",
       { roomId, userId, testText },
       (response: any) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        
         if (!response.success) {
           setError(response.error);
         }
       }
     );
+    
+    // Set 10 second timeout for start:contest callback
+    timeoutId = setTimeout(() => {
+      console.log("[v0] Start contest timeout - no response from server");
+      setError("Failed to start contest - timeout");
+    }, 10000);
   };
 
   const submitResult = (roomId: string, userId: string, result: any) => {
