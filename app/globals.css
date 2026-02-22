@@ -181,22 +181,150 @@
 
 .typing-current {
   color: var(--typing-current);
-  border-left: 2px solid var(--typing-current);
+  position: relative;
+}
+
+.typing-current.caret-line {
   margin-left: -2px;
   padding-left: 1px;
-  animation: blink 1s step-end infinite;
+}
+
+.typing-current.caret-line::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--typing-current);
+  animation: blink-line-caret 1s step-end infinite;
+}
+
+.typing-current.caret-line.caret-faded::after {
+  animation: blink-line-caret-faded 1s step-end infinite;
+}
+
+.typing-current.caret-block {
+  animation: none;
+  padding: 0 2px;
+}
+
+.typing-current.caret-block::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--typing-current);
+  opacity: 1;
+  animation: blink-block 1s step-end infinite;
+  z-index: -1;
+}
+
+.typing-current.caret-block.caret-faded::before {
+  animation: blink-block-faded 1s step-end infinite;
+}
+
+.typing-current.caret-underline {
+  margin-bottom: -2px;
+  padding-bottom: 1px;
+}
+
+.typing-current.caret-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 2px;
+  background-color: var(--typing-current);
+  animation: blink-underline-caret 1s step-end infinite;
+}
+
+.typing-current.caret-underline.caret-faded::after {
+  animation: blink-underline-caret-faded 1s step-end infinite;
 }
 
 .typing-upcoming {
   color: var(--typing-upcoming);
 }
 
-@keyframes blink {
+@keyframes blink-line {
   0%, 100% {
     border-color: var(--typing-current);
   }
   50% {
     border-color: transparent;
+  }
+}
+
+@keyframes blink-line-caret {
+  0%, 100% {
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-line-caret-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    background-color: transparent;
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink-block {
+  0%, 100% {
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-block-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    background-color: transparent;
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink-underline {
+  0%, 100% {
+    border-color: var(--typing-current);
+  }
+  50% {
+    border-color: transparent;
+  }
+}
+
+@keyframes blink-underline-caret {
+  0%, 100% {
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-underline-caret-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    background-color: transparent;
+    opacity: 0.4;
   }
 }
 

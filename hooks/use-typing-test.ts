@@ -120,8 +120,10 @@ export function useTypingTest(config: TestConfig) {
     const rawWpm = Math.round((allTyped.length / 5) / timeInMinutes);
 
     // Calculate consistency (standard deviation of WPM)
-    const avgWpm = wpmHistory.length > 0 ? wpmHistory.reduce((a, b) => a + b, 0) / wpmHistory.length : 0;
-    const variance = wpmHistory.length > 0 ? wpmHistory.reduce((sum, w) => sum + Math.pow(w - avgWpm, 2), 0) / wpmHistory.length : 0;
+    // Use at least current WPM if history is empty
+    const validWpmHistory = wpmHistory.length > 0 ? wpmHistory : [wpm];
+    const avgWpm = validWpmHistory.reduce((a, b) => a + b, 0) / validWpmHistory.length;
+    const variance = validWpmHistory.reduce((sum, w) => sum + Math.pow(w - avgWpm, 2), 0) / validWpmHistory.length;
     const stdDev = Math.sqrt(variance);
     const consistency = avgWpm > 0 ? Math.max(0, Math.round(100 - (stdDev / avgWpm) * 100)) : 100;
 
@@ -146,10 +148,15 @@ export function useTypingTest(config: TestConfig) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+  }, []);
 
-    const finalStats = calculateStats();
-    setStats(finalStats);
-  }, [calculateStats]);
+  // Calculate stats when test finishes
+  useEffect(() => {
+    if (isFinished && !stats) {
+      const finalStats = calculateStats();
+      setStats(finalStats);
+    }
+  }, [isFinished, stats, calculateStats]);
 
   // Timer
   useEffect(() => {
@@ -158,13 +165,19 @@ export function useTypingTest(config: TestConfig) {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setElapsedTime(elapsed);
 
-        // Only add to WPM history every second and if we haven't already added for this second
-        if (elapsed !== lastWpmUpdateRef.current) {
+        // Add to WPM history every second and if we haven't already added for this second
+        if (elapsed > 0 && elapsed !== lastWpmUpdateRef.current) {
           lastWpmUpdateRef.current = elapsed;
           
           const totalTyped = typedChars.flat().length;
           const currentWpm = Math.round((totalTyped / 5) / (elapsed / 60)) || 0;
-          setWpmHistory((prev) => [...prev, currentWpm]);
+          setWpmHistory((prev) => {
+            // Avoid duplicates
+            if (prev.length === 0 || prev[prev.length - 1] !== currentWpm) {
+              return [...prev, currentWpm];
+            }
+            return prev;
+          });
         }
 
         // Check time limit
