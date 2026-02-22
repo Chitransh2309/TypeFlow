@@ -217,7 +217,7 @@ export function RoomBrowser() {
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && selectedRoom && joinRoomConfirm(selectedRoom)}
-              disabled={isJoining}
+              disabled={joiningRoomId === selectedRoom?.roomId}
             />
             <Button
               onClick={() => selectedRoom && joinRoomConfirm(selectedRoom)}
