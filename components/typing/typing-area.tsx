@@ -42,22 +42,50 @@ export function TypingArea({
     if (activeWordRef.current && containerRef.current) {
       const container = containerRef.current;
       const activeWord = activeWordRef.current;
-      const containerRect = container.getBoundingClientRect();
-      const wordRect = activeWord.getBoundingClientRect();
 
-      const isOutOfView =
-        wordRect.top < containerRect.top ||
-        wordRect.bottom > containerRect.bottom;
+      // Check visibility
+      const checkVisibility = () => {
+        const containerRect = container.getBoundingClientRect();
+        const wordRect = activeWord.getBoundingClientRect();
 
-      // Check if word is scrolled above the visible area (past the top)
-      const isScrolledAbove = wordRect.bottom < containerRect.top;
-      setCaretFaded(isScrolledAbove);
+        const isOutOfView =
+          wordRect.top < containerRect.top ||
+          wordRect.bottom > containerRect.bottom;
 
-      if (isOutOfView) {
-        activeWord.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+        // Check if word is scrolled above the visible area (past the top)
+        // Add small buffer (5px) to handle edge cases
+        const isScrolledAbove = wordRect.bottom < containerRect.top - 5;
+        setCaretFaded(isScrolledAbove);
+
+        if (isOutOfView) {
+          activeWord.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      };
+
+      // Check immediately
+      checkVisibility();
+
+      // Re-check after scroll animation completes
+      const timer = setTimeout(checkVisibility, 500);
+      return () => clearTimeout(timer);
     }
   }, [currentWordIndex]);
+
+  // Also check visibility on scroll events
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !activeWordRef.current) return;
+
+    const handleScroll = () => {
+      const containerRect = container.getBoundingClientRect();
+      const wordRect = activeWordRef.current!.getBoundingClientRect();
+      const isScrolledAbove = wordRect.bottom < containerRect.top - 5;
+      setCaretFaded(isScrolledAbove);
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Focus input on mount
   useEffect(() => {
