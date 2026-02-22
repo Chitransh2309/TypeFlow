@@ -42,6 +42,19 @@ export default function RoomPage() {
     roomId: hasJoined ? roomId : undefined,
     userId: session?.user?.id,
     userName: session?.user?.name,
+    onConnected: () => {
+      toast({
+        title: "Connected",
+        description: "Successfully connected to room",
+      });
+    },
+    onDisconnected: () => {
+      toast({
+        title: "Disconnected",
+        description: "Lost connection to room",
+        variant: "destructive",
+      });
+    },
     onRoomUpdated: (data) => {
       // Update room participants
       setRoom((prev) => {
@@ -53,12 +66,48 @@ export default function RoomPage() {
         };
       });
     },
+    onUserJoined: (data) => {
+      toast({
+        title: "User Joined",
+        description: `${data.userName} joined the room`,
+      });
+    },
+    onUserLeft: (data) => {
+      toast({
+        title: "User Left",
+        description: "A user left the room",
+      });
+    },
     onContestStarted: (data) => {
       setTestText(data.testText);
       setRoomStatus("contest");
+      toast({
+        title: "Contest Started",
+        description: "The typing contest has started!",
+      });
+    },
+    onUserFinished: (data) => {
+      toast({
+        title: "User Finished",
+        description: `A user finished with ${data.wpm} WPM`,
+      });
     },
     onContestFinished: () => {
       setRoomStatus("finished");
+      toast({
+        title: "Contest Finished",
+        description: "The contest has ended!",
+      });
+    },
+    onRoomDeleted: () => {
+      toast({
+        title: "Room Deleted",
+        description: "Host left the room - room has been deleted",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        router.push("/rooms");
+      }, 2000);
     },
   });
 
@@ -191,21 +240,42 @@ export default function RoomPage() {
   };
 
   const handleLeaveRoom = async () => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id || !room) return;
 
     try {
-      // Emit socket event to notify server
+      // Check if user is host
+      const isHost = room.host.userId === session.user.id;
+
+      // Emit socket event to notify server with host flag
       socketLeaveRoom(roomId, session.user.id);
 
-      await fetch(`/api/rooms/${roomId}/leave`, {
+      const response = await fetch(`/api/rooms/${roomId}/leave`, {
         method: "POST",
       });
-      router.push("/rooms");
-      toast({ title: "Success", description: "Left the room" });
+
+      if (!response.ok) {
+        throw new Error("Failed to leave room");
+      }
+
+      const data = await response.json();
+
+      if (isHost && data.deleted) {
+        toast({
+          title: "Room Deleted",
+          description: "You left the room - room has been deleted",
+        });
+      } else {
+        toast({ title: "Success", description: "Left the room" });
+      }
+
+      setTimeout(() => {
+        router.push("/rooms");
+      }, 1000);
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to leave room",
+        description:
+          error instanceof Error ? error.message : "Failed to leave room",
         variant: "destructive",
       });
     }

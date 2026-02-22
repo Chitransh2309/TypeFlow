@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { leaveRoom } from "@/lib/rooms";
+import { leaveRoom, getRoomById } from "@/lib/rooms";
 
 // POST /api/rooms/:roomId/leave - Leave a room
 export async function POST(
@@ -16,9 +16,13 @@ export async function POST(
 
     const { roomId } = await params;
 
-    await leaveRoom(roomId, session.user.id);
+    // Check if user is host before leaving
+    const room = await getRoomById(roomId);
+    const isHost = room?.host.userId === session.user.id;
 
-    return NextResponse.json({ success: true });
+    const result = await leaveRoom(roomId, session.user.id);
+
+    return NextResponse.json({ success: true, deleted: result.deleted, wasHost: isHost });
   } catch (error) {
     console.error("Error leaving room:", error);
     return NextResponse.json(
