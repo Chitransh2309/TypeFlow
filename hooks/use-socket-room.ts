@@ -55,11 +55,12 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
 
     // Connection events
     socket.on("connect", () => {
-      console.log("[Socket] Connected");
+      console.log("[v0] Socket Connected, socket ID:", socket.id);
       setIsConnected(true);
       options.onConnected?.();
 
       // Join the room
+      console.log("[v0] Attempting to join room:", options.roomId);
       socket.emit(
         "join:room",
         {
@@ -69,7 +70,10 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
         },
         (response: any) => {
           if (!response.success) {
+            console.log("[v0] Join room error:", response.error);
             setError(response.error);
+          } else {
+            console.log("[v0] Successfully joined room");
           }
         }
       );
@@ -180,9 +184,9 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     );
   };
 
-  const leaveRoom = (roomId: string, userId: string) => {
+  const leaveRoom = (roomId: string, userId: string, isHost?: boolean) => {
     if (!socketRef.current) return;
-    socketRef.current.emit("leave:room", { roomId, userId });
+    socketRef.current.emit("leave:room", { roomId, userId, isHost });
   };
 
   const sendProgress = (roomId: string, progress: ProgressUpdate) => {

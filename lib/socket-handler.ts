@@ -99,19 +99,20 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
         const { roomId, userId, isHost } = data;
 
         socketToUser.delete(socket.id);
-        socket.leave(`room:${roomId}`);
-
-        // If host leaves, emit room:deleted to all clients
+        
+        // If host leaves, emit room:deleted to all clients BEFORE leaving
         if (isHost) {
           io!.to(`room:${roomId}`).emit("room:deleted", {
             message: "Host left the room - room has been deleted",
           });
         } else {
-          // Notify others that user left
-          io!.to(`room:${roomId}`).emit("user:left", { userId });
+          // Notify others that user left (before leaving the room)
+          socket.to(`room:${roomId}`).emit("user:left", { userId });
         }
 
-        // If room is empty or no one is in the room, clean up
+        socket.leave(`room:${roomId}`);
+
+        // Clean up room state if empty
         const roomClients = await io!.to(`room:${roomId}`).fetchSockets();
         if (roomClients.length === 0) {
           roomStates.delete(roomId);
@@ -249,13 +250,23 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
     });
 
     // Handle disconnect
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       console.log("[Socket] User disconnected:", socket.id);
       const userInfo = socketToUser.get(socket.id);
       if (userInfo) {
-        io!.to(`room:${userInfo.roomId}`).emit("user:left", {
-          userId: userInfo.userId,
+        const { roomId, userId } = userInfo;
+        
+        // Notify others that user left
+        io!.to(`room:${roomId}`).emit("user:left", {
+          userId,
         });
+        
+        // Clean up room state if empty
+        const roomClients = await io!.to(`room:${roomId}`).fetchSockets();
+        if (roomClients.length === 0) {
+          roomStates.delete(roomId);
+          console.log("[Socket] Room cleaned up:", roomId);
+        }
       }
       socketToUser.delete(socket.id);
     });
