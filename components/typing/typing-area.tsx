@@ -2,8 +2,9 @@
 
 import React from "react";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject, useState } from "react";
 import { cn } from "@/lib/utils";
+import { loadSettings, type UserSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 
 interface CharState {
   char: string;
@@ -33,6 +34,13 @@ export function TypingArea({
 }: TypingAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [caretFaded, setCaretFaded] = useState(false);
+
+  useEffect(() => {
+    const s = loadSettings();
+    setSettings(s);
+  }, []);
 
   // Auto-scroll to keep current word visible
   useEffect(() => {
@@ -42,10 +50,15 @@ export function TypingArea({
       const containerRect = container.getBoundingClientRect();
       const wordRect = activeWord.getBoundingClientRect();
 
-      if (
+      const isOutOfView =
         wordRect.top < containerRect.top ||
-        wordRect.bottom > containerRect.bottom
-      ) {
+        wordRect.bottom > containerRect.bottom;
+
+      // Check if word is scrolled below container
+      const isScrolledDown = wordRect.top > containerRect.bottom;
+      setCaretFaded(isScrolledDown);
+
+      if (isOutOfView) {
         activeWord.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
@@ -110,7 +123,11 @@ export function TypingArea({
                     "typing-char inline-block",
                     charState.state === "correct" && "typing-correct",
                     charState.state === "incorrect" && "typing-incorrect",
-                    charState.state === "current" && "typing-current",
+                    charState.state === "current" &&
+                      `typing-current caret-${settings.caretStyle}`,
+                    charState.state === "current" &&
+                      caretFaded &&
+                      "caret-faded",
                     charState.state === "upcoming" && "typing-upcoming"
                   )}
                 >

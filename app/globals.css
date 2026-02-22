@@ -181,22 +181,106 @@
 
 .typing-current {
   color: var(--typing-current);
+}
+
+.typing-current.caret-line {
   border-left: 2px solid var(--typing-current);
   margin-left: -2px;
   padding-left: 1px;
-  animation: blink 1s step-end infinite;
+  animation: blink-line 1s step-end infinite;
+}
+
+.typing-current.caret-line.caret-faded {
+  border-left-color: var(--typing-current);
+  opacity: 0.4;
+  animation: blink-line-faded 1s step-end infinite;
+}
+
+.typing-current.caret-block {
+  background-color: var(--typing-current);
+  animation: blink-block 1s step-end infinite;
+}
+
+.typing-current.caret-block.caret-faded {
+  background-color: var(--typing-current);
+  opacity: 0.4;
+  animation: blink-block-faded 1s step-end infinite;
+}
+
+.typing-current.caret-underline {
+  border-bottom: 2px solid var(--typing-current);
+  margin-bottom: -2px;
+  padding-bottom: 1px;
+  animation: blink-underline 1s step-end infinite;
+}
+
+.typing-current.caret-underline.caret-faded {
+  border-bottom-color: var(--typing-current);
+  opacity: 0.4;
+  animation: blink-underline-faded 1s step-end infinite;
 }
 
 .typing-upcoming {
   color: var(--typing-upcoming);
 }
 
-@keyframes blink {
+@keyframes blink-line {
   0%, 100% {
     border-color: var(--typing-current);
   }
   50% {
     border-color: transparent;
+  }
+}
+
+@keyframes blink-line-faded {
+  0%, 100% {
+    border-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    border-color: transparent;
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink-block {
+  0%, 100% {
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-block-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    background-color: transparent;
+    opacity: 0.4;
+  }
+}
+
+@keyframes blink-underline {
+  0%, 100% {
+    border-color: var(--typing-current);
+  }
+  50% {
+    border-color: transparent;
+  }
+}
+
+@keyframes blink-underline-faded {
+  0%, 100% {
+    border-color: var(--typing-current);
+    opacity: 0.4;
+  }
+  50% {
+    border-color: transparent;
+    opacity: 0.4;
   }
 }
 
