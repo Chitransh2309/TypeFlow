@@ -185,10 +185,8 @@
 }
 
 .typing-current.caret-line {
-  border-left: 2px solid var(--typing-current);
   margin-left: -2px;
   padding-left: 1px;
-  animation: blink-line 1s step-end infinite;
 }
 
 .typing-current.caret-line::after {
@@ -229,10 +227,8 @@
 }
 
 .typing-current.caret-underline {
-  border-bottom: 2px solid var(--typing-current);
   margin-bottom: -2px;
   padding-bottom: 1px;
-  animation: blink-underline 1s step-end infinite;
 }
 
 .typing-current.caret-underline::after {
