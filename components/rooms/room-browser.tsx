@@ -27,7 +27,7 @@ export function RoomBrowser() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [joinPassword, setJoinPassword] = useState("");
-  const [isJoining, setIsJoining] = useState(false);
+  const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
 
   // Fetch public rooms
   useEffect(() => {
@@ -63,7 +63,7 @@ export function RoomBrowser() {
   };
 
   const joinRoomConfirm = async (room: Room) => {
-    setIsJoining(true);
+    setJoiningRoomId(room.roomId);
     try {
       const res = await fetch(`/api/rooms/${room.roomId}/join`, {
         method: "POST",
@@ -87,7 +87,7 @@ export function RoomBrowser() {
         variant: "destructive",
       });
     } finally {
-      setIsJoining(false);
+      setJoiningRoomId(null);
     }
   };
 
@@ -182,11 +182,11 @@ export function RoomBrowser() {
                 <Button
                   onClick={() => handleJoinRoom(room)}
                   disabled={
-                    room.participants.length >= room.maxParticipants || isJoining
+                    room.participants.length >= room.maxParticipants || joiningRoomId === room.roomId
                   }
                   className="w-full"
                 >
-                  {isJoining ? (
+                  {joiningRoomId === room.roomId ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Joining...
@@ -221,10 +221,10 @@ export function RoomBrowser() {
             />
             <Button
               onClick={() => selectedRoom && joinRoomConfirm(selectedRoom)}
-              disabled={isJoining || !joinPassword}
+              disabled={joiningRoomId === selectedRoom?.roomId || !joinPassword}
               className="w-full"
             >
-              {isJoining ? (
+              {joiningRoomId === selectedRoom?.roomId ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Joining...
