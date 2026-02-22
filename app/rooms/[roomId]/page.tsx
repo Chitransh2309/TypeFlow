@@ -66,6 +66,12 @@ export default function RoomPage() {
         };
       });
     },
+    onUserJoining: (data) => {
+      toast({
+        title: "User Joining",
+        description: `${data.userName} is joining the room...`,
+      });
+    },
     onUserJoined: (data) => {
       toast({
         title: "User Joined",

@@ -74,13 +74,19 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
         roomState.status = room.status as "waiting" | "active" | "finished";
         roomState.participants = room.participants;
 
+        // Notify others that user is joining (loader state)
+        socket.to(`room:${roomId}`).emit("user:joining", {
+          userId,
+          userName,
+        });
+
         // Broadcast room update to all users
         io!.to(`room:${roomId}`).emit("room:updated", {
           participants: room.participants,
           status: room.status,
         });
 
-        // Notify others that user joined
+        // Notify others that user has joined
         socket.to(`room:${roomId}`).emit("user:joined", {
           userId,
           userName,

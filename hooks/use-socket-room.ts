@@ -19,6 +19,7 @@ interface UseSocketRoomOptions {
   userId?: string;
   userName?: string;
   onRoomUpdated?: (data: { participants: RoomParticipant[]; status: string }) => void;
+  onUserJoining?: (data: { userId: string; userName: string }) => void;
   onUserJoined?: (data: { userId: string; userName: string }) => void;
   onUserLeft?: (data: { userId: string }) => void;
   onContestStarted?: (data: { testText: string; startedAt: Date }) => void;
@@ -95,6 +96,10 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
       options.onRoomUpdated?.(data);
     });
 
+    socket.on("user:joining", (data) => {
+      options.onUserJoining?.(data);
+    });
+
     socket.on("user:joined", (data) => {
       options.onUserJoined?.(data);
     });
@@ -134,7 +139,7 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
       }
       socket.disconnect(true); // Force disconnect
     };
-  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
+  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoining, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
 
   // Handle page unload (closing tab/browser)
   useEffect(() => {
