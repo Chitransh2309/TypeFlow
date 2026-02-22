@@ -12,27 +12,27 @@ import { TestResults } from "./test-results";
 import { TestConfig } from "./test-config";
 import { cn } from "@/lib/utils";
 import { RotateCcw } from "lucide-react";
-import { loadSettings, type UserSettings } from "@/lib/settings-store";
+import { useSettings } from "@/lib/settings-context";
 
 const TIME_OPTIONS = [15, 30, 60, 120];
 const WORD_OPTIONS = [10, 25, 50, 100];
 
 export function TypingTest() {
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const { settings, isLoaded } = useSettings();
   const [mode, setMode] = useState<TestMode>("time");
   const [timeLimit, setTimeLimit] = useState(30);
   const [wordCount, setWordCount] = useState(50);
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
 
-  // Load settings on mount
+  // Load defaults from settings
   useEffect(() => {
-    const s = loadSettings();
-    setSettings(s);
-    setMode(s.defaultMode);
-    setTimeLimit(s.defaultTimeLimit);
-    setWordCount(s.defaultWordCount);
-    setDifficulty(s.defaultDifficulty);
-  }, []);
+    if (isLoaded && settings) {
+      setMode(settings.defaultMode);
+      setTimeLimit(settings.defaultTimeLimit);
+      setWordCount(settings.defaultWordCount);
+      setDifficulty(settings.defaultDifficulty);
+    }
+  }, [isLoaded, settings]);
 
   const config = {
     mode,

@@ -4,7 +4,7 @@ import React from "react";
 
 import { useEffect, useRef, type RefObject, useState } from "react";
 import { cn } from "@/lib/utils";
-import { loadSettings, type UserSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
+import { useSettings } from "@/lib/settings-context";
 
 interface CharState {
   char: string;
@@ -34,13 +34,8 @@ export function TypingArea({
 }: TypingAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const { settings } = useSettings();
   const [caretFaded, setCaretFaded] = useState(false);
-
-  useEffect(() => {
-    const s = loadSettings();
-    setSettings(s);
-  }, []);
 
   // Auto-scroll to keep current word visible
   useEffect(() => {

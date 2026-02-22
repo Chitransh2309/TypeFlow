@@ -37,6 +37,7 @@ import {
   CloudOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/lib/settings-context";
 import {
   loadSettings,
   saveSettings,
@@ -47,15 +48,12 @@ import {
 export default function SettingsPage() {
   const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const { settings, updateSettings } = useSettings();
   const [mounted, setMounted] = useState(false);
   const [synced, setSynced] = useState(false);
 
   // Load settings: from server if logged in, else localStorage
   const loadAllSettings = useCallback(async () => {
-    const local = loadSettings();
-    setSettings(local);
-
     if (session?.user?.id) {
       try {
         const res = await fetch("/api/settings");
@@ -66,8 +64,7 @@ export default function SettingsPage() {
             delete merged._id;
             delete merged.userId;
             delete merged.updatedAt;
-            setSettings(merged);
-            saveSettings(merged);
+            updateSettings(merged);
             setSynced(true);
           }
         }
@@ -75,7 +72,7 @@ export default function SettingsPage() {
         // use local settings
       }
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, updateSettings]);
 
   useEffect(() => {
     setMounted(true);
@@ -83,24 +80,20 @@ export default function SettingsPage() {
   }, [loadAllSettings]);
 
   const update = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
-    setSettings((prev) => {
-      const next = { ...prev, [key]: value };
-      saveSettings(next);
-      // Sync to server if logged in
-      if (session?.user?.id) {
-        fetch("/api/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(next),
-        }).catch(() => {});
-      }
-      return next;
-    });
+    updateSettings({ [key]: value });
+    // Sync to server if logged in
+    if (session?.user?.id) {
+      const next = { ...settings, [key]: value };
+      fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      }).catch(() => {});
+    }
   };
 
   const handleReset = async () => {
-    setSettings(DEFAULT_SETTINGS);
-    saveSettings(DEFAULT_SETTINGS);
+    updateSettings(DEFAULT_SETTINGS);
     setTheme("dark");
     if (session?.user?.id) {
       try {
@@ -230,6 +223,12 @@ export default function SettingsPage() {
                     </Button>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  {"Preview: "}
+                  <span className={cn("font-mono text-lg", `caret-${settings.caretStyle}`)}>
+                    a
+                  </span>
+                </p>
               </div>
             </CardContent>
           </Card>

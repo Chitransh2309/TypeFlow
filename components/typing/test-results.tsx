@@ -161,7 +161,7 @@ export function TestResults({
       </div>
 
       {/* WPM Chart */}
-      {wpmHistory.length > 2 && (
+      {wpmHistory.length >= 1 && (
         <Card className="bg-card/50 border-border/50">
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -172,7 +172,7 @@ export function TestResults({
           <CardContent>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                <AreaChart data={chartData.length > 0 ? chartData : [{ time: 1, wpm: stats.wpm }]}>
                   <defs>
                     <linearGradient id="wpmResultGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={primaryColor} stopOpacity={0.3} />
