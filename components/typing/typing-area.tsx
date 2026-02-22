@@ -49,9 +49,9 @@ export function TypingArea({
         wordRect.top < containerRect.top ||
         wordRect.bottom > containerRect.bottom;
 
-      // Check if word is scrolled below container
-      const isScrolledDown = wordRect.top > containerRect.bottom;
-      setCaretFaded(isScrolledDown);
+      // Check if word is scrolled above the visible area (past the top)
+      const isScrolledAbove = wordRect.bottom < containerRect.top;
+      setCaretFaded(isScrolledAbove);
 
       if (isOutOfView) {
         activeWord.scrollIntoView({ behavior: "smooth", block: "center" });

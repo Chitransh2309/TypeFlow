@@ -223,12 +223,6 @@ export default function SettingsPage() {
                     </Button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {"Preview: "}
-                  <span className={cn("font-mono text-lg", `caret-${settings.caretStyle}`)}>
-                    a
-                  </span>
-                </p>
               </div>
             </CardContent>
           </Card>

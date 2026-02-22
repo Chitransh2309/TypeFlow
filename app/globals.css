@@ -181,6 +181,7 @@
 
 .typing-current {
   color: var(--typing-current);
+  position: relative;
 }
 
 .typing-current.caret-line {
@@ -190,20 +191,40 @@
   animation: blink-line 1s step-end infinite;
 }
 
-.typing-current.caret-line.caret-faded {
-  border-left-color: var(--typing-current);
-  opacity: 0.4;
-  animation: blink-line-faded 1s step-end infinite;
+.typing-current.caret-line::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--typing-current);
+  animation: blink-line-caret 1s step-end infinite;
+}
+
+.typing-current.caret-line.caret-faded::after {
+  animation: blink-line-caret-faded 1s step-end infinite;
 }
 
 .typing-current.caret-block {
-  background-color: var(--typing-current);
-  animation: blink-block 1s step-end infinite;
+  animation: none;
+  padding: 0 2px;
 }
 
-.typing-current.caret-block.caret-faded {
+.typing-current.caret-block::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   background-color: var(--typing-current);
-  opacity: 0.4;
+  opacity: 1;
+  animation: blink-block 1s step-end infinite;
+  z-index: -1;
+}
+
+.typing-current.caret-block.caret-faded::before {
   animation: blink-block-faded 1s step-end infinite;
 }
 
@@ -214,10 +235,19 @@
   animation: blink-underline 1s step-end infinite;
 }
 
-.typing-current.caret-underline.caret-faded {
-  border-bottom-color: var(--typing-current);
-  opacity: 0.4;
-  animation: blink-underline-faded 1s step-end infinite;
+.typing-current.caret-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 2px;
+  background-color: var(--typing-current);
+  animation: blink-underline-caret 1s step-end infinite;
+}
+
+.typing-current.caret-underline.caret-faded::after {
+  animation: blink-underline-caret-faded 1s step-end infinite;
 }
 
 .typing-upcoming {
@@ -233,13 +263,22 @@
   }
 }
 
-@keyframes blink-line-faded {
+@keyframes blink-line-caret {
   0%, 100% {
-    border-color: var(--typing-current);
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-line-caret-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
     opacity: 0.4;
   }
   50% {
-    border-color: transparent;
+    background-color: transparent;
     opacity: 0.4;
   }
 }
@@ -273,13 +312,22 @@
   }
 }
 
-@keyframes blink-underline-faded {
+@keyframes blink-underline-caret {
   0%, 100% {
-    border-color: var(--typing-current);
+    background-color: var(--typing-current);
+  }
+  50% {
+    background-color: transparent;
+  }
+}
+
+@keyframes blink-underline-caret-faded {
+  0%, 100% {
+    background-color: var(--typing-current);
     opacity: 0.4;
   }
   50% {
-    border-color: transparent;
+    background-color: transparent;
     opacity: 0.4;
   }
 }
