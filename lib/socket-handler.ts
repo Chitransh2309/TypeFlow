@@ -74,6 +74,9 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
         roomState.status = room.status as "waiting" | "active" | "finished";
         roomState.participants = room.participants;
 
+        // Send callback immediately before broadcasting
+        callback({ success: true, room });
+
         // Notify others that user is joining (loader state)
         socket.to(`room:${roomId}`).emit("user:joining", {
           userId,
@@ -91,8 +94,6 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
           userId,
           userName,
         });
-
-        callback({ success: true, room });
       } catch (error) {
         console.error("[Socket] Error joining room:", error);
         callback({ success: false, error: "Failed to join room" });
@@ -178,13 +179,14 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
           roomState.userProgress.clear(); // Reset progress for all users
         }
 
+        // Send callback immediately before broadcasting
+        callback({ success: true });
+
         // Broadcast contest start to all users
         io!.to(`room:${roomId}`).emit("room:started", {
           testText,
           startedAt: new Date(),
         });
-
-        callback({ success: true });
       } catch (error) {
         console.error("[Socket] Error starting contest:", error);
         callback({ success: false, error: "Failed to start contest" });
@@ -262,10 +264,21 @@ export function initializeSocket(httpServer: HTTPServer): IOServer {
       if (userInfo) {
         const { roomId, userId } = userInfo;
         
-        // Notify others that user left
-        io!.to(`room:${roomId}`).emit("user:left", {
-          userId,
-        });
+        // Check if user is host
+        const room = await getRoomById(roomId);
+        const isHost = room?.host.userId === userId;
+        
+        // If host disconnects, notify others that room is deleted
+        if (isHost) {
+          io!.to(`room:${roomId}`).emit("room:deleted", {
+            message: "Host left the room - room has been deleted",
+          });
+        } else {
+          // Notify others that user left
+          io!.to(`room:${roomId}`).emit("user:left", {
+            userId,
+          });
+        }
         
         // Clean up room state if empty
         const roomClients = await io!.to(`room:${roomId}`).fetchSockets();
