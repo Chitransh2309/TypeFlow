@@ -125,8 +125,8 @@ export function TypingArea({
         )}
       >
         {/* Gradient overlays for scroll indication */}
-        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" />
+        {/* <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" /> */}
+        {/* <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent z-10 pointer-events-none" /> */}
 
         {/* Words */}
         <div className="relative px-4 py-8">
