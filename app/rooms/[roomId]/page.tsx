@@ -66,6 +66,12 @@ export default function RoomPage() {
         };
       });
     },
+    onUserJoining: (data) => {
+      toast({
+        title: "User Joining",
+        description: `${data.userName} is joining the room...`,
+      });
+    },
     onUserJoined: (data) => {
       toast({
         title: "User Joined",
@@ -144,6 +150,11 @@ export default function RoomPage() {
           setHasJoined(false);
         } else {
           setHasJoined(true);
+          // Show toast when page loads and user is already in room
+          toast({
+            title: "Room Loaded",
+            description: "You are in the room",
+          });
         }
       } catch (error) {
         toast({
@@ -247,7 +258,7 @@ export default function RoomPage() {
       const isHost = room.host.userId === session.user.id;
 
       // Emit socket event to notify server with host flag
-      socketLeaveRoom(roomId, session.user.id);
+      socketLeaveRoom(roomId, session.user.id, isHost);
 
       const response = await fetch(`/api/rooms/${roomId}/leave`, {
         method: "POST",

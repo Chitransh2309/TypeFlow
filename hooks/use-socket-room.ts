@@ -19,6 +19,7 @@ interface UseSocketRoomOptions {
   userId?: string;
   userName?: string;
   onRoomUpdated?: (data: { participants: RoomParticipant[]; status: string }) => void;
+  onUserJoining?: (data: { userId: string; userName: string }) => void;
   onUserJoined?: (data: { userId: string; userName: string }) => void;
   onUserLeft?: (data: { userId: string }) => void;
   onContestStarted?: (data: { testText: string; startedAt: Date }) => void;
@@ -55,11 +56,12 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
 
     // Connection events
     socket.on("connect", () => {
-      console.log("[Socket] Connected");
+      console.log("[v0] Socket Connected, socket ID:", socket.id);
       setIsConnected(true);
       options.onConnected?.();
 
       // Join the room
+      console.log("[v0] Attempting to join room:", options.roomId);
       socket.emit(
         "join:room",
         {
@@ -69,7 +71,10 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
         },
         (response: any) => {
           if (!response.success) {
+            console.log("[v0] Join room error:", response.error);
             setError(response.error);
+          } else {
+            console.log("[v0] Successfully joined room");
           }
         }
       );
@@ -89,6 +94,10 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     // Room events
     socket.on("room:updated", (data) => {
       options.onRoomUpdated?.(data);
+    });
+
+    socket.on("user:joining", (data) => {
+      options.onUserJoining?.(data);
     });
 
     socket.on("user:joined", (data) => {
@@ -130,7 +139,7 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
       }
       socket.disconnect(true); // Force disconnect
     };
-  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
+  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoining, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
 
   // Handle page unload (closing tab/browser)
   useEffect(() => {
@@ -180,9 +189,9 @@ export function useSocketRoom(options: UseSocketRoomOptions) {
     );
   };
 
-  const leaveRoom = (roomId: string, userId: string) => {
+  const leaveRoom = (roomId: string, userId: string, isHost?: boolean) => {
     if (!socketRef.current) return;
-    socketRef.current.emit("leave:room", { roomId, userId });
+    socketRef.current.emit("leave:room", { roomId, userId, isHost });
   };
 
   const sendProgress = (roomId: string, progress: ProgressUpdate) => {

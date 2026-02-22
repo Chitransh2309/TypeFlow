@@ -41,6 +41,13 @@ export async function createRoom(
   roomData: Omit<Room, "_id" | "roomId" | "status" | "createdAt" | "participants">
 ): Promise<Room> {
   const collection = await getRoomsCollection();
+  
+  // Check if room name already exists
+  const existingRoom = await collection.findOne({ name: roomData.name });
+  if (existingRoom) {
+    throw new Error("Room name already exists. Please choose a different name.");
+  }
+  
   const roomId = generateRoomId();
   const passwordHash = roomData.passwordHash
     ? await hashPassword(roomData.passwordHash)
@@ -66,7 +73,7 @@ export async function createRoom(
   return { ...room, _id: result.insertedId };
 }
 
-// Get public rooms
+// Get public rooms (legacy - kept for backwards compatibility)
 export async function getPublicRooms(
   limit: number = 20,
   skip: number = 0
@@ -77,6 +84,22 @@ export async function getPublicRooms(
       isPublic: true,
       status: "waiting", // Only show rooms waiting to start
     })
+    .limit(limit)
+    .skip(skip)
+    .toArray();
+}
+
+// Get all rooms (public and private)
+export async function getAllRooms(
+  limit: number = 20,
+  skip: number = 0
+): Promise<Room[]> {
+  const collection = await getRoomsCollection();
+  return collection
+    .find({
+      status: "waiting", // Only show rooms waiting to start
+    })
+    .sort({ createdAt: -1 }) // Sort by newest first
     .limit(limit)
     .skip(skip)
     .toArray();

@@ -127,14 +127,19 @@ export function RoomBrowser() {
           {filteredRooms.map((room) => (
             <Card key={room.roomId} className="overflow-hidden hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <CardTitle className="text-lg">{room.name}</CardTitle>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-lg">{room.name}</CardTitle>
+                      <Badge variant={room.isPublic ? "default" : "secondary"} className="text-xs">
+                        {room.isPublic ? "Public" : "Private"}
+                      </Badge>
+                    </div>
                     <CardDescription className="text-xs mt-1">
                       Room ID: {room.roomId}
                     </CardDescription>
                   </div>
-                  {!room.isPublic && <Lock className="h-4 w-4 text-yellow-600" />}
+                  {!room.isPublic && <Lock className="h-4 w-4 text-yellow-600 mt-1 flex-shrink-0" />}
                 </div>
               </CardHeader>
 

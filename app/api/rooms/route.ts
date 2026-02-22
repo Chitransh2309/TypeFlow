@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createRoom, getPublicRooms } from "@/lib/rooms";
+import { createRoom, getAllRooms } from "@/lib/rooms";
 import { Room, RoomSettings } from "@/lib/models/room";
 
-// GET /api/rooms - Get public rooms
+// GET /api/rooms - Get all rooms (public and private)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 100);
     const skip = parseInt(searchParams.get("skip") || "0");
 
-    const rooms = await getPublicRooms(limit, skip);
+    const rooms = await getAllRooms(limit, skip);
     return NextResponse.json(rooms);
   } catch (error) {
     console.error("Error fetching rooms:", error);
