@@ -101,12 +101,30 @@ export function RoomLobby({
                     className="flex items-center justify-between p-3 bg-secondary rounded-lg"
                   >
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={participant.userImage || ""} />
-                        <AvatarFallback>
-                          {participant.userName.substring(0, 1).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <div className="relative shrink-0">
+                        <Avatar
+                          className={`h-8 w-8 ${
+                            participant.connectionStatus === "disconnected" ? "opacity-50" : ""
+                          }`}
+                        >
+                          <AvatarImage src={participant.userImage || ""} />
+                          <AvatarFallback>
+                            {participant.userName.substring(0, 1).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-secondary ${
+                            participant.connectionStatus === "disconnected"
+                              ? "bg-muted-foreground"
+                              : "bg-green-500"
+                          }`}
+                          title={
+                            participant.connectionStatus === "disconnected"
+                              ? "Reconnecting…"
+                              : "Connected"
+                          }
+                        />
+                      </div>
                       <div>
                         <p className="font-medium">{participant.userName}</p>
                         <p className="text-xs text-muted-foreground">
@@ -114,9 +132,16 @@ export function RoomLobby({
                         </p>
                       </div>
                     </div>
-                    {participant.userId === session?.user?.id && (
-                      <Badge variant="secondary">You</Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {participant.connectionStatus === "disconnected" && (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          Reconnecting
+                        </Badge>
+                      )}
+                      {participant.userId === session?.user?.id && (
+                        <Badge variant="secondary">You</Badge>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

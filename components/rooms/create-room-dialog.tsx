@@ -241,8 +241,8 @@ export function CreateRoomDialog() {
               <SelectTrigger id="maxParticipants">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 9 }, (_, i) => i + 2).map((num) => (
+              <SelectContent className="max-h-64">
+                {[2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50].map((num) => (
                   <SelectItem key={num} value={num.toString()}>
                     {num} participants
                   </SelectItem>

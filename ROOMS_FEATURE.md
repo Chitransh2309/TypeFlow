@@ -2,318 +2,213 @@
 
 ## Overview
 
-The TypeFlow Rooms feature allows users to create and join multiplayer typing contest rooms where they can compete with others in real-time. The feature includes:
+The TypeFlow Rooms feature lets users create and join multiplayer typing contest rooms
+and compete with others in real-time. The room owner starts the contest, everyone gets
+the same server-generated text, and live WPM/accuracy/progress are broadcast to
+everyone via Socket.io.
 
-- **Public & Private Rooms**: Create public rooms visible to all or private rooms with password protection
-- **Customizable Settings**: Configure difficulty, test mode (time/words), duration, and max participants
-- **Real-time Progress Tracking**: Watch other users' typing speed (WPM), accuracy, and progress bars live
-- **Live Leaderboard**: See final results and rankings after each contest
-- **Room Management**: Join, create, leave rooms with full control
+- **Public & Private Rooms**: create public rooms visible to all, or private
+  password-protected rooms
+- **Customizable Settings**: difficulty, test mode (time/words), duration/word count,
+  max participants
+- **Real-time Progress Tracking**: live WPM, accuracy, and progress bars for every
+  participant
+- **Live Leaderboard**: server-computed rankings after each contest, including DNFs
+- **Reconnect handling**: brief disconnects (tab refresh, network blip) don't remove you
+  from an in-progress contest; if the host disconnects, the host role migrates to
+  another connected participant instead of destroying the room
 
 ## Architecture
 
+This feature is split across **two separately deployed services**:
+
+1. **The Next.js app** (this repo's normal deployment) - pages, auth, and the REST
+   operations that don't need a live connection: create/browse/search a room, read
+   results, delete a never-started room.
+2. **`socket-server/`** - a standalone, always-on Node + Express + Socket.io service
+   (see `socket-server/README.md`), deployed separately (e.g. Render). It owns every
+   live-lifecycle action - join, leave, progress, contest start/end, result
+   submission - and is the sole writer for those in MongoDB.
+
+This split exists because Socket.io needs a persistent server process to hold live
+connections and in-memory room state; Next.js API routes (App Router) don't expose the
+underlying HTTP server the old Pages Router hack relied on, and typical serverless
+hosting doesn't keep a process alive between requests.
+
+### Auth handshake across the two services
+
+The Next.js app's session cookie is scoped to its own origin, so the socket-server
+(a different origin) can't see it directly. Instead:
+
+1. The client calls `POST /api/socket-token` (`app/api/socket-token/route.ts`) on the
+   Next.js app, which verifies the NextAuth session and mints a 60-second signed JWT
+   using the same `NEXTAUTH_SECRET` (or `AUTH_SECRET`) the app already uses for
+   sessions - no separate secret to provision.
+2. The client passes that token via Socket.io's `auth` option when connecting to the
+   socket-server, which re-mints a fresh token on every reconnection attempt.
+3. `socket-server/src/auth/socket-auth-middleware.ts` verifies the token and attaches
+   the identity to `socket.data.user`. Every event handler derives `userId` from that
+   verified identity - never from a client-supplied field in the event payload.
+
 ### Database Schema
 
-#### `rooms` Collection
-Stores room metadata and current state:
+#### `rooms` collection
 ```typescript
 {
-  roomId: string,           // Unique room code (e.g., "ABC123")
-  name: string,            // Room name
-  host: {                  // Host information
-    userId: string,
-    userName: string,
-    userImage?: string
-  },
-  isPublic: boolean,       // Public or private room
-  passwordHash?: string,   // For private rooms
-  settings: {              // Contest settings
-    mode: "time" | "words",
-    timeLimit?: number,    // seconds
-    wordCount?: number,
-    difficulty: "easy" | "normal" | "hard"
-  },
+  roomId: string,              // unique room code, e.g. "ABC123"
+  name: string,
+  host: { userId, userName, userImage? },
+  isPublic: boolean,
+  passwordHash?: string | null,
+  settings: { mode: "time" | "words", timeLimit?, wordCount?, difficulty },
   status: "waiting" | "active" | "finished",
-  participants: [],        // Array of RoomParticipant
+  participants: [{
+    userId, userName, userImage?, joinedAt,
+    connectionStatus: "connected" | "disconnected",
+    connectedAt?, disconnectedAt?,
+  }],
   maxParticipants: number,
   createdAt: Date,
   startedAt?: Date,
   endedAt?: Date,
-  testText?: string        // Text all participants type
+  testText?: string,           // generated server-side by the socket-server, never client-supplied
+  lastActivityAt: Date,
+  waitingExpiresAt?: Date,      // TTL anchor - only set while status === "waiting"
+  abandoned?: boolean,          // true if force-finished because everyone disconnected
 }
 ```
+Indexes: unique on `roomId`; TTL on `waitingExpiresAt` (auto-deletes rooms that never
+started within 30 minutes); `{status, isPublic, createdAt}` for the browse listing.
 
-#### `room_results` Collection
-Stores individual test results:
+#### `room_results` collection
 ```typescript
 {
-  roomId: string,
-  userId: string,
-  userName: string,
-  userImage?: string,
-  wpm: number,
-  accuracy: number,
-  elapsedTime: number,
-  position: number,        // Final ranking
-  createdAt: Date
+  roomId, userId, userName, userImage?,
+  wpm, accuracy, elapsedTime,
+  charsTyped, correctChars,     // raw counts the server scores from
+  dnf: boolean,
+  finishReason: "completed" | "dnf-disconnect" | "dnf-timeout" | "dnf-host-ended",
+  flagged: boolean,             // exceeded the plausibility ceiling - shown, not hidden
+  position: number,             // computed once, authoritatively, when the contest ends
+  createdAt: Date,
 }
 ```
+Unique index on `{roomId, userId}` - result submission is an idempotent upsert.
 
-### API Routes
+### API Routes (Next.js app - non-live operations only)
 
-#### Room Management
-- `GET /api/rooms` - List public waiting rooms
-- `POST /api/rooms` - Create new room
-- `GET /api/rooms/:roomId` - Get room details
-- `POST /api/rooms/:roomId/join` - Join a room
-- `POST /api/rooms/:roomId/leave` - Leave a room
-- `DELETE /api/rooms/:roomId` - Delete room (host only)
+- `GET /api/rooms` - list public waiting rooms
+- `POST /api/rooms` - create a new room
+- `GET /api/rooms/:roomId` - room snapshot (also used as a preview before joining)
+- `GET /api/rooms/search?code=` - look up a room by code
+- `GET /api/rooms/:roomId/results` - leaderboard (read-only)
+- `DELETE /api/rooms/:roomId/delete` - host deletes a never-started room
+- `POST /api/socket-token` - mint the short-lived socket-server auth token
 
-#### Contest
-- `POST /api/rooms/:roomId/start` - Start contest (host only)
-- `POST /api/rooms/:roomId/submit-result` - Submit typing result
-- `GET /api/rooms/:roomId/results` - Get leaderboard
+### Socket.io Events (socket-server - all live operations)
 
-### Socket.io Events
+| Event | Direction | Notes |
+|---|---|---|
+| `room:join` | C→S (ack) | `{roomId, password?}` - userId from the verified token |
+| `room:leave` | C→S | |
+| `progress:send` | C→S | debounced client-side (~200ms), rate-limited server-side |
+| `contest:start` | C→S (ack) | host-only; server generates the test text |
+| `result:submit` | C→S (ack) | `{roomId, charsTyped, correctChars}` - server computes wpm/accuracy/elapsed itself |
+| `contest:end` | C→S (ack) | host-only |
+| `room:updated` | S→C | participants/status changed |
+| `participant:connection-changed` | S→C | drives a "reconnecting…" indicator, not an immediate removal |
+| `room:host-changed` | S→C | host migrated to another participant |
+| `user:joined` / `user:left` | S→C | |
+| `contest:started` | S→C | `{testText, startedAt}` |
+| `progress:update` | S→C | live WPM/accuracy/progress |
+| `user:finished` | S→C | includes `dnf`/`flagged` |
+| `contest:finished` | S→C | `{finishedAt, reason}` - host-ended, time-expired, or abandoned |
+| `room:deleted` | S→C | `{reason}` - host-left-empty or waiting-expired |
 
-#### Server → Client
-- `room:updated` - Room participants or status changed
-- `room:started` - Contest has started, includes test text
-- `user:joined` - New user joined the room
-- `user:left` - User left the room
-- `progress:update` - Live typing progress update
-- `user:finished` - User finished typing
-- `room:finished` - Contest ended
+## Anti-cheat (pragmatic, not a full replay system)
 
-#### Client → Server
-- `join:room` - Join a specific room
-- `leave:room` - Leave room
-- `progress:send` - Send typing progress updates
-- `result:submit` - Submit final result
-- `start:contest` - Start contest (host only)
-- `end:contest` - End contest (host only)
+`lib/anti-cheat.ts`'s `scoreResult` runs server-side on every `result:submit`:
+- Elapsed time is the server's own clock (time since it broadcast `contest:started`),
+  never a client-reported value.
+- Rejects results claiming an elapsed time under 1 second (physically impossible).
+- Cross-checks against the last `progress:send` seen for that user.
+- WPM above 300 (well past the ~216 WPM world record) is still saved, but marked
+  `flagged` - shown on the leaderboard with a badge rather than hidden.
+
+## Reconnect & failure handling
+
+- A disconnect starts a grace period (~20s for a regular participant, ~50s for the
+  host) before anything changes - a page refresh or brief network drop recovers
+  silently, since all live state (progress, room membership) lives server-side.
+- If the grace period expires: in a still-`"waiting"` room, the participant is
+  removed (and the room deleted if now empty); in an `"active"` contest, they're never
+  removed from the participant list - instead they're marked DNF from their last known
+  progress, and everyone else continues unaffected.
+- If the departing user was the host and someone else is still connected, host role
+  migrates to the longest-connected remaining participant instead of ending the room.
+- Time-mode contests have a server-owned timer - when the limit expires, anyone who
+  hasn't submitted is auto-DNF'd and the contest finishes automatically (this didn't
+  exist before; time-mode contests previously had no way to auto-complete).
+- A background sweep force-finishes any `"active"` room that's gone stale (e.g. the
+  process restarted mid-contest) rather than leaving it open forever.
+
+## Cold-start UX (Render free tier)
+
+The socket-server's free-tier instance spins down after ~15 minutes idle and takes up
+to a minute to wake on the next connection. `hooks/use-socket-room.ts` exposes a
+`connectionPhase` (`connecting` → `waking` after 5s → `failed` after 75s, with a manual
+retry) so the room page shows an honest "waking up the game server" state instead of a
+silent hang. `app/rooms/page.tsx` also fires a fire-and-forget health-check ping as soon
+as the room browser loads, so the instance is often already warm by the time a user
+creates or joins a room.
 
 ## Components
 
 ### Pages
-- `/rooms` - Room browser and creation
-- `/rooms/[roomId]` - Active room (lobby, contest, or results)
+- `/rooms` - room browser and creation
+- `/rooms/[roomId]` - lobby, live contest, or leaderboard, depending on room status
 
-### Components
-- `CreateRoomDialog` - Form to create new room with settings
-- `RoomBrowser` - List and search public rooms
-- `RoomLobby` - Waiting room before contest starts
-- `RoomContest` - Live typing interface with participant progress
-- `RoomLeaderboard` - Final results and rankings
-- `UserProgressCard` - Individual user progress display
+### Components (`components/rooms/`)
+- `CreateRoomDialog`, `RoomBrowser`, `JoinRoomDialog` - browse/create/join by code
+  (joining now navigates to the room page and lets its socket connection perform the
+  actual join, rather than a separate REST call before navigating)
+- `RoomLobby`, `RoomContest`, `RoomLeaderboard`, `UserProgressCard` - driven entirely
+  by props from `app/rooms/[roomId]/page.tsx`, which owns the single socket connection
+  for the page (previously `RoomContest` opened its own second socket connection
+  independently of the page - consolidated to one connection per page)
 
-## Features
+## Setup
 
-### 1. Room Creation
-Users can create rooms with:
-- Custom room name
-- Public or private (password-protected) option
-- Test mode selection (time or word-based)
-- Difficulty level (easy, normal, hard)
-- Max participant limit (2-50)
+### Environment variables
 
-### 2. Room Joining
-- Browse public rooms with search/filter
-- Join full rooms (if capacity available)
-- Password entry for private rooms
-- Real-time participant list
+Next.js app (`.env`): existing `MONGODB_URI`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`,
+`NEXTAUTH_SECRET`, `NEXTAUTH_URL`, plus `NEXT_PUBLIC_SOCKET_SERVER_URL` (the
+socket-server's URL, e.g. `http://localhost:4000` locally).
 
-### 3. Lobby Phase
-Before contest starts:
-- View room settings and all participants
-- Share room code with others
-- Host can start contest when ready
-- Minimum 2 participants required
+`socket-server/.env`: see `socket-server/.env.example` - same `MONGODB_URI` and
+`NEXTAUTH_SECRET` values as the Next app, plus `ALLOWED_ORIGIN` (the Next app's origin,
+for CORS).
 
-### 4. Contest Phase
-During active typing:
-- Display test text with character highlighting
-- Type in textarea with real-time metrics
-- See all participants' live progress:
-  - Current WPM
-  - Accuracy percentage
-  - Progress bar
-- Cannot join once contest starts
-- Submit result when typing complete
+### Running locally
 
-### 5. Results Phase
-After contest ends:
-- Rankings with medal indicators
-- Detailed stats per user (WPM, accuracy, time)
-- Your score highlighted
-- Play again or leave option
-
-## Security
-
-- **Authentication**: All operations require NextAuth session
-- **Authorization**: 
-  - Only host can start/end contest and delete room
-  - Cannot rejoin after leaving
-  - Password hashing with bcryptjs for private rooms
-- **Data Validation**: Input validation on all API routes
-- **Row-Level Security**: (Ready for Supabase integration)
-
-## Real-time Updates
-
-Uses Socket.io for instant updates:
-- All participants see same test text simultaneously
-- WPM and accuracy calculated client-side, validated server-side
-- Progress updates broadcast every keystroke
-- Finished state immediately visible to all users
-
-## Setup Instructions
-
-### 1. Install Dependencies
-Dependencies are already added to package.json:
-```json
-{
-  "socket.io": "^4.7.2",
-  "socket.io-client": "^4.7.2",
-  "bcryptjs": "^2.4.3",
-  "nanoid": "^5.0.4"
-}
-```
-
-### 2. Environment Variables
-Add to `.env.local`:
-```
-NEXTAUTH_URL=http://localhost:3000
-MONGODB_URI=your-mongodb-connection-string
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-### 3. Database Setup
-MongoDB collections will be created automatically when accessed:
-- `rooms` - Room data
-- `room_results` - Contest results
-
-### 4. Running Locally
 ```bash
-npm install
-npm run dev
+npm install && npm run dev            # Next.js app, http://localhost:3000
+cd socket-server && npm install && npm run dev   # socket-server, http://localhost:4000
 ```
 
-Then navigate to `/rooms` to start creating and joining rooms.
+### Deploying
 
-## Usage Flow
-
-### Creating a Room
-1. Navigate to `/rooms`
-2. Click "Create Room" button
-3. Fill in room details (name, privacy, settings)
-4. Submit - you'll be taken to the room lobby
-
-### Joining a Room
-1. Browse public rooms on `/rooms` page
-2. Click "Join Room" on desired room card
-3. Enter password if private room
-4. Enter the lobby
-
-### Starting Contest
-1. As host, click "Start Contest" in lobby (min 2 participants)
-2. All participants see test text and start typing area
-3. Progress updates broadcast in real-time
-4. Complete typing and submit result
-
-### Viewing Results
-1. After host ends contest or all finish
-2. Leaderboard shows automatically
-3. View rankings, WPM, accuracy
-4. Can play again or leave room
+The Next.js app deploys however it already does. The socket-server deploys separately
+(see `socket-server/README.md` for the Render-specific settings, including why it must
+use Render's native Node runtime rather than Docker).
 
 ## Future Enhancements
 
-- [ ] User profile integration with stats
 - [ ] Matchmaking for similar skill levels
-- [ ] Room templates and presets
 - [ ] Chat during contest
 - [ ] Replay/recording of contests
 - [ ] Friends-only rooms
-- [ ] Seasonal leaderboards
-- [ ] Badges/achievements
+- [ ] Seasonal leaderboards / badges
 - [ ] Custom word lists
-- [ ] Challenge invitations
-
-## Troubleshooting
-
-### Socket.io Connection Issues
-- Ensure `NEXT_PUBLIC_APP_URL` is set correctly
-- Check browser console for connection errors
-- Verify websocket support in your hosting environment
-
-### Room Not Found
-- Room may have been deleted if it became empty
-- Try creating a new room instead
-
-### Cannot Join Full Room
-- Room has reached max participant limit
-- Create your own room or wait for space
-
-### Results Not Showing
-- Wait a moment for all submissions to process
-- Refresh the page if stuck
-
-## Testing
-
-Test the feature locally:
-```bash
-npm run dev
-# Open http://localhost:3000/rooms
-```
-
-Create multiple browser windows to test:
-1. Create room in window 1
-2. Join with window 2 (different user account)
-3. Start contest in window 1
-4. Type in both windows
-5. Watch real-time progress sync
-6. View results
-
-## File Structure
-
-```
-app/
-  api/
-    rooms/
-      route.ts                    # Create & list rooms
-      [roomId]/
-        route.ts                  # Get room details
-        join/route.ts            # Join room
-        leave/route.ts           # Leave room
-        start/route.ts           # Start contest
-        submit-result/route.ts   # Submit typing result
-        results/route.ts         # Get leaderboard
-        delete/route.ts          # Delete room
-  rooms/
-    page.tsx                      # Room browser page
-    [roomId]/
-      page.tsx                    # Active room page
-
-components/
-  rooms/
-    create-room-dialog.tsx       # Create room form
-    room-browser.tsx             # Browse & join rooms
-    room-lobby.tsx               # Waiting room
-    room-contest.tsx             # Live typing interface
-    room-leaderboard.tsx         # Results display
-    user-progress-card.tsx       # Progress indicator
-    index.ts                      # Export all
-
-hooks/
-  use-socket-room.ts             # Socket.io integration hook
-
-lib/
-  models/room.ts                 # TypeScript interfaces
-  rooms.ts                        # Room database operations
-  socket-handler.ts              # Socket.io server handlers
-  socket-server.ts               # Socket.io initialization
-```
-
-## License
-
-Part of TypeFlow typing speed application.
+- [ ] Redis-backed Socket.io adapter if the socket-server ever needs more than one
+      instance (not needed yet - a single instance is plenty for expected load)

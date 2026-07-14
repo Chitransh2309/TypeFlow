@@ -1,288 +1,270 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { RoomParticipant } from "@/lib/models/room";
+import type { Room, RoomParticipant } from "@/lib/models/room";
+import type {
+  AckResponse,
+  ClientToServerEvents,
+  ContestFinishedReason,
+  RoomDeletedReason,
+  RoomJoinAck,
+  RoomJoinErrorCode,
+  ServerToClientEvents,
+} from "@/lib/socket-events";
 
-export interface ProgressUpdate {
-  userId: string;
-  userName: string;
-  currentWordIndex: number;
-  charIndex: number;
-  wpm: number;
-  accuracy: number;
-  progress: number;
-}
+export type ConnectionPhase =
+  | "idle"
+  | "connecting"
+  | "waking"
+  | "connected"
+  | "failed";
+
+// Separate from ConnectionPhase on purpose: the socket transport can be fully
+// "connected" while the room:join application-level request is still pending
+// or was rejected (e.g. wrong password) - the room UI must gate on this, not
+// just on the transport being connected.
+export type JoinStatus = "idle" | "joining" | "joined" | "denied";
+
+const WAKING_AFTER_MS = 5_000;
+const FAILED_AFTER_MS = 75_000;
 
 interface UseSocketRoomOptions {
   roomId?: string;
   userId?: string;
-  userName?: string;
-  onRoomUpdated?: (data: { participants: RoomParticipant[]; status: string }) => void;
-  onUserJoining?: (data: { userId: string; userName: string }) => void;
+  password?: string; // only used for the very first join attempt of a private room
+  // Current room status, kept fresh by the caller - used only to decide how
+  // to handle pagehide (see the effect below).
+  roomStatus?: Room["status"];
+  onRoomUpdated?: (data: { participants: RoomParticipant[]; status: Room["status"] }) => void;
+  onParticipantConnectionChanged?: (data: { userId: string; status: "connected" | "disconnected" }) => void;
+  onHostChanged?: (data: { newHostUserId: string; newHostUserName: string }) => void;
   onUserJoined?: (data: { userId: string; userName: string }) => void;
   onUserLeft?: (data: { userId: string }) => void;
-  onContestStarted?: (data: { testText: string; startedAt: Date }) => void;
-  onProgressUpdate?: (progress: ProgressUpdate) => void;
-  onUserFinished?: (data: { userId: string; wpm: number; accuracy: number; elapsedTime: number }) => void;
-  onContestFinished?: (data: { finishedAt: Date }) => void;
-  onRoomDeleted?: (data: { message: string }) => void;
-  onConnected?: () => void;
-  onDisconnected?: () => void;
+  onContestStarted?: (data: { testText: string; startedAt: string }) => void;
+  onProgressUpdate?: (data: {
+    userId: string;
+    userName: string;
+    charIndex: number;
+    wpm: number;
+    accuracy: number;
+    progress: number;
+  }) => void;
+  onUserFinished?: (data: {
+    userId: string;
+    wpm: number;
+    accuracy: number;
+    elapsedTime: number;
+    dnf: boolean;
+    flagged: boolean;
+  }) => void;
+  onContestFinished?: (data: { finishedAt: string; reason: ContestFinishedReason }) => void;
+  onRoomDeleted?: (data: { reason: RoomDeletedReason }) => void;
+  onJoined?: (room: Room) => void;
+  onJoinError?: (error: string) => void;
+}
+
+type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+
+async function mintSocketToken(): Promise<string | undefined> {
+  try {
+    const res = await fetch("/api/socket-token", { method: "POST" });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return data.token;
+  } catch {
+    return undefined;
+  }
 }
 
 export function useSocketRoom(options: UseSocketRoomOptions) {
-  const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<AppSocket | null>(null);
+  const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("idle");
+  const [joinStatus, setJoinStatus] = useState<JoinStatus>("idle");
+  const [joinDeniedCode, setJoinDeniedCode] = useState<RoomJoinErrorCode | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
+  // Callbacks are captured by ref (updated every render via plain assignment,
+  // never inside an effect) so the connect effect below never needs them in
+  // its dependency array - this is what stops the socket from tearing down
+  // and reconnecting on every parent re-render (e.g. every keystroke).
+  const callbacksRef = useRef(options);
+  callbacksRef.current = options;
+
+  const socketServerUrl = process.env.NEXT_PUBLIC_SOCKET_SERVER_URL || "";
+
   useEffect(() => {
-    // Only initialize if we have roomId and userId
-    if (!options.roomId || !options.userId) return;
+    const { roomId, userId } = options;
+    if (!roomId || !userId) return;
 
-    // Get the correct socket server URL with fallback
-    const socketUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+    if (!socketServerUrl) {
+      setConnectionPhase("failed");
+      setError("Socket server is not configured (NEXT_PUBLIC_SOCKET_SERVER_URL is missing)");
+      return;
+    }
 
-    // Initialize socket connection
-    const socket = io(socketUrl, {
+    let wakingTimer: ReturnType<typeof setTimeout> | null = null;
+    let failedTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const armPhaseTimers = () => {
+      clearPhaseTimers();
+      wakingTimer = setTimeout(() => setConnectionPhase("waking"), WAKING_AFTER_MS);
+      failedTimer = setTimeout(() => setConnectionPhase("failed"), FAILED_AFTER_MS);
+    };
+    const clearPhaseTimers = () => {
+      if (wakingTimer) clearTimeout(wakingTimer);
+      if (failedTimer) clearTimeout(failedTimer);
+      wakingTimer = null;
+      failedTimer = null;
+    };
+
+    setConnectionPhase("connecting");
+    armPhaseTimers();
+
+    const socket: AppSocket = io(socketServerUrl, {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
       transports: ["websocket", "polling"],
+      auth: (cb: (data: { token: string }) => void) => {
+        mintSocketToken().then((token) => cb({ token: token || "" }));
+      },
     });
 
     socketRef.current = socket;
 
-    // Connection events
-    socket.on("connect", () => {
-      console.log("[v0] Socket Connected, socket ID:", socket.id);
-      setIsConnected(true);
-      options.onConnected?.();
-
-      // Join the room
-      console.log("[v0] Attempting to join room:", options.roomId);
-      
-      let timeoutId: NodeJS.Timeout | null = null;
-      
-      socket.emit(
-        "join:room",
-        {
-          roomId: options.roomId,
-          userId: options.userId,
-          userName: options.userName,
-        },
-        (response: any) => {
-          if (timeoutId) clearTimeout(timeoutId);
-          
-          if (!response.success) {
-            console.log("[v0] Join room error:", response.error);
-            setError(response.error);
-          } else {
-            console.log("[v0] Successfully joined room");
-          }
+    const attemptJoin = (password?: string) => {
+      setJoinStatus("joining");
+      socket.emit("room:join", { roomId, password }, (response: RoomJoinAck) => {
+        if (!response.success) {
+          setJoinStatus("denied");
+          setJoinDeniedCode(response.code);
+          setError(response.error || "Failed to join room");
+          callbacksRef.current.onJoinError?.(response.error || "Failed to join room");
+        } else if (response.room) {
+          setJoinStatus("joined");
+          setJoinDeniedCode(undefined);
+          setError(null);
+          callbacksRef.current.onJoined?.(response.room);
         }
-      );
-      
-      // Set 10 second timeout for join:room callback
-      timeoutId = setTimeout(() => {
-        console.log("[v0] Join room timeout - no response from server");
-        setError("Failed to join room - timeout");
-      }, 10000);
+      });
+    };
+
+    socket.on("connect", () => {
+      clearPhaseTimers();
+      setConnectionPhase("connected");
+      setError(null);
+      attemptJoin(callbacksRef.current.password);
     });
 
     socket.on("disconnect", () => {
-      console.log("[Socket] Disconnected");
-      setIsConnected(false);
-      options.onDisconnected?.();
+      // A disconnect while this effect is still mounted means the connection
+      // dropped unexpectedly (network blip, server restart/cold-sleep) -
+      // socket.io will keep retrying automatically; reflect that in the UI.
+      setConnectionPhase("connecting");
+      armPhaseTimers();
     });
 
-    socket.on("connect_error", (error: any) => {
-      console.error("[Socket] Connection error:", error);
-      setError(error.message);
+    socket.on("connect_error", (err) => {
+      setError(err.message);
     });
 
-    // Room events
-    socket.on("room:updated", (data) => {
-      options.onRoomUpdated?.(data);
-    });
+    socket.on("room:updated", (data) => callbacksRef.current.onRoomUpdated?.(data));
+    socket.on("participant:connection-changed", (data) =>
+      callbacksRef.current.onParticipantConnectionChanged?.(data)
+    );
+    socket.on("room:host-changed", (data) => callbacksRef.current.onHostChanged?.(data));
+    socket.on("user:joined", (data) => callbacksRef.current.onUserJoined?.(data));
+    socket.on("user:left", (data) => callbacksRef.current.onUserLeft?.(data));
+    socket.on("contest:started", (data) => callbacksRef.current.onContestStarted?.(data));
+    socket.on("progress:update", (data) => callbacksRef.current.onProgressUpdate?.(data));
+    socket.on("user:finished", (data) => callbacksRef.current.onUserFinished?.(data));
+    socket.on("contest:finished", (data) => callbacksRef.current.onContestFinished?.(data));
+    socket.on("room:deleted", (data) => callbacksRef.current.onRoomDeleted?.(data));
 
-    socket.on("user:joining", (data) => {
-      options.onUserJoining?.(data);
-    });
-
-    socket.on("user:joined", (data) => {
-      options.onUserJoined?.(data);
-    });
-
-    socket.on("user:left", (data) => {
-      options.onUserLeft?.(data);
-    });
-
-    socket.on("room:started", (data) => {
-      options.onContestStarted?.(data);
-    });
-
-    socket.on("progress:update", (progress) => {
-      options.onProgressUpdate?.(progress);
-    });
-
-    socket.on("user:finished", (data) => {
-      options.onUserFinished?.(data);
-    });
-
-    socket.on("room:finished", (data) => {
-      options.onContestFinished?.(data);
-    });
-
-    socket.on("room:deleted", (data) => {
-      options.onRoomDeleted?.(data);
-    });
-
-    // Cleanup on unmount
     return () => {
-      // Emit leave room event before disconnecting
-      if (options.roomId && options.userId) {
-        socket.emit("leave:room", {
-          roomId: options.roomId,
-          userId: options.userId,
-        });
+      clearPhaseTimers();
+      if (socket.connected) {
+        socket.emit("room:leave", { roomId });
       }
-      socket.disconnect(true); // Force disconnect
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, [options.roomId, options.userId, options.onConnected, options.onDisconnected, options.onRoomDeleted, options.onUserJoining, options.onUserJoined, options.onUserLeft, options.onRoomUpdated, options.onContestStarted, options.onProgressUpdate, options.onUserFinished, options.onContestFinished]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.roomId, options.userId, socketServerUrl]);
 
-  // Handle page unload (closing tab/browser)
+  // Best-effort leave on tab close. beforeunload/unload are deliberately not
+  // used here (they race each other and defeat the back/forward cache);
+  // pagehide covers the same case more reliably.
+  //
+  // Skipped entirely while a contest is active: pagehide also fires on a
+  // same-tab refresh/reload, not just a real tab close, and this event
+  // bypasses the disconnect grace period - for an active contest that would
+  // immediately DNF the refreshing participant (and could even end the whole
+  // contest early if they were the last missing result) before they get a
+  // chance to reconnect. Letting the socket's own disconnect fire instead
+  // routes it through the grace-period path, so a refresh is resumable and a
+  // genuine tab close still finalizes shortly after via the same path.
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (socketRef.current && options.roomId && options.userId) {
-        console.log("[v0] beforeunload - disconnecting socket");
-        // Emit leave room event
-        socketRef.current.emit("leave:room", {
-          roomId: options.roomId,
-          userId: options.userId,
-        }, () => {
-          console.log("[v0] Leave room callback received");
-        });
-        // Force immediate disconnect without waiting for acknowledgement
-        socketRef.current.disconnect(true);
-      }
-    };
-
-    const handleUnload = () => {
-      if (socketRef.current && options.roomId && options.userId) {
-        console.log("[v0] unload - disconnecting socket");
-        // Disconnect without emitting at this point (beforeunload should have done it)
-        socketRef.current.disconnect(true);
-      }
-    };
-
     const handlePageHide = () => {
-      if (socketRef.current && options.roomId && options.userId) {
-        console.log("[v0] pagehide - disconnecting socket");
-        socketRef.current.emit("leave:room", {
-          roomId: options.roomId,
-          userId: options.userId,
-        });
-        socketRef.current.disconnect(true);
+      const socket = socketRef.current;
+      if (socket && options.roomId && callbacksRef.current.roomStatus !== "active") {
+        socket.emit("room:leave", { roomId: options.roomId });
       }
     };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("unload", handleUnload);
     document.addEventListener("pagehide", handlePageHide);
-    
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("unload", handleUnload);
-      document.removeEventListener("pagehide", handlePageHide);
-    };
-  }, [options.roomId, options.userId]);
+    return () => document.removeEventListener("pagehide", handlePageHide);
+  }, [options.roomId]);
 
-  const joinRoom = (roomId: string, userId: string, userName: string) => {
+  const leaveRoom = useCallback((roomId: string) => {
+    socketRef.current?.emit("room:leave", { roomId });
+  }, []);
+
+  const sendProgress = useCallback(
+    (roomId: string, data: { charIndex: number; wpm: number; accuracy: number }) => {
+      socketRef.current?.emit("progress:send", { roomId, ...data });
+    },
+    []
+  );
+
+  const startContest = useCallback((roomId: string, onResult?: (res: AckResponse) => void) => {
     if (!socketRef.current) return;
+    socketRef.current.emit("contest:start", { roomId }, (response) => {
+      if (!response.success) setError(response.error || "Failed to start contest");
+      onResult?.(response);
+    });
+  }, []);
 
-    socketRef.current.emit(
-      "join:room",
-      { roomId, userId, userName },
-      (response: any) => {
-        if (!response.success) {
-          setError(response.error);
-        }
-      }
-    );
-  };
+  const submitResult = useCallback(
+    (
+      roomId: string,
+      data: { charsTyped: number; correctChars: number },
+      onResult?: (res: AckResponse) => void
+    ) => {
+      if (!socketRef.current) return;
+      socketRef.current.emit("result:submit", { roomId, ...data }, (response) => {
+        if (!response.success) setError(response.error || "Failed to submit result");
+        onResult?.(response);
+      });
+    },
+    []
+  );
 
-  const leaveRoom = (roomId: string, userId: string, isHost?: boolean) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit("leave:room", { roomId, userId, isHost });
-  };
-
-  const sendProgress = (roomId: string, progress: ProgressUpdate) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit("progress:send", { roomId, progress });
-  };
-
-  const startContest = (roomId: string, userId: string, testText: string) => {
-    if (!socketRef.current) return;
-
-    let timeoutId: NodeJS.Timeout | null = null;
-    
-    socketRef.current.emit(
-      "start:contest",
-      { roomId, userId, testText },
-      (response: any) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        
-        if (!response.success) {
-          setError(response.error);
-        }
-      }
-    );
-    
-    // Set 10 second timeout for start:contest callback
-    timeoutId = setTimeout(() => {
-      console.log("[v0] Start contest timeout - no response from server");
-      setError("Failed to start contest - timeout");
-    }, 10000);
-  };
-
-  const submitResult = (roomId: string, userId: string, result: any) => {
-    if (!socketRef.current) return;
-
-    socketRef.current.emit(
-      "result:submit",
-      { roomId, userId, result },
-      (response: any) => {
-        if (!response.success) {
-          setError(response.error);
-        }
-      }
-    );
-  };
-
-  const endContest = (roomId: string, userId: string) => {
-    if (!socketRef.current) return;
-
-    socketRef.current.emit(
-      "end:contest",
-      { roomId, userId },
-      (response: any) => {
-        if (!response.success) {
-          setError(response.error);
-        }
-      }
-    );
-  };
+  const retry = useCallback(() => {
+    setConnectionPhase("connecting");
+    socketRef.current?.connect();
+  }, []);
 
   return {
-    isConnected,
+    connectionPhase,
+    isConnected: connectionPhase === "connected",
+    joinStatus,
+    joinDeniedCode,
     error,
-    joinRoom,
     leaveRoom,
     sendProgress,
     startContest,
     submitResult,
-    endContest,
+    retry,
   };
 }

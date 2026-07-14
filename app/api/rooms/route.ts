@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       host: {
         userId: session.user.id,
         userName: session.user.name || "Anonymous",
-        userImage: session.user.image,
+        userImage: session.user.image ?? undefined,
       },
     });
 

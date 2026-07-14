@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface UserProgressCardProps {
   userId: string;
@@ -14,6 +15,7 @@ interface UserProgressCardProps {
   progress: number; // 0-100
   isCurrentUser?: boolean;
   isFinished?: boolean;
+  connectionStatus?: "connected" | "disconnected";
 }
 
 export function UserProgressCard({
@@ -25,26 +27,50 @@ export function UserProgressCard({
   progress,
   isCurrentUser = false,
   isFinished = false,
+  connectionStatus = "connected",
 }: UserProgressCardProps) {
+  const isDisconnected = connectionStatus === "disconnected";
+
   return (
     <Card
-      className={`p-4 ${
-        isCurrentUser ? "border-2 border-primary bg-primary/5" : ""
-      } ${isFinished ? "opacity-75" : ""}`}
+      className={cn(
+        "p-4",
+        isCurrentUser && "border-2 border-primary bg-primary/5",
+        isFinished && "opacity-75"
+      )}
     >
       {/* User Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3 flex-1">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={userImage || ""} />
-            <AvatarFallback>{userName.substring(0, 1).toUpperCase()}</AvatarFallback>
-          </Avatar>
+          <div className="relative shrink-0">
+            <Avatar className={cn("h-8 w-8", isDisconnected && "opacity-50")}>
+              <AvatarImage src={userImage || ""} />
+              <AvatarFallback>{userName.substring(0, 1).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            {/* Presence dot, Discord/Slack-style - a single glance says
+                connected vs reconnecting without extra text taking up room */}
+            <span
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card",
+                isDisconnected ? "bg-muted-foreground" : "bg-green-500"
+              )}
+              title={isDisconnected ? "Reconnecting…" : "Connected"}
+            />
+          </div>
           <div className="flex-1">
-            <p className="font-semibold text-sm">{userName}</p>
+            <p className={cn("font-semibold text-sm", isDisconnected && "text-muted-foreground")}>
+              {userName}
+            </p>
             {isCurrentUser && <p className="text-xs text-primary">You</p>}
           </div>
         </div>
-        {isFinished && <Badge variant="secondary">Finished</Badge>}
+        {isDisconnected ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            Reconnecting
+          </Badge>
+        ) : (
+          isFinished && <Badge variant="secondary">Finished</Badge>
+        )}
       </div>
 
       {/* Progress Bar */}

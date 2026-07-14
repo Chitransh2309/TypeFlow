@@ -9,18 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Trophy, Loader2, RotateCcw } from "lucide-react";
+import { Trophy, Loader2 } from "lucide-react";
 
 interface RoomLeaderboardProps {
   room: Room;
   onLeaveRoom: () => void;
-  onPlayAgain?: () => void;
 }
 
 export function RoomLeaderboard({
   room,
   onLeaveRoom,
-  onPlayAgain,
 }: RoomLeaderboardProps) {
   const { data: session } = useSession();
   const { toast } = useToast();
@@ -66,6 +64,12 @@ export function RoomLeaderboard({
     (r) => r.userId === session?.user?.id
   );
 
+  const finishers = results.filter((r) => !r.dnf);
+  const avgAccuracy =
+    finishers.length > 0
+      ? finishers.reduce((sum, r) => sum + r.accuracy, 0) / finishers.length
+      : null;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -99,12 +103,12 @@ export function RoomLeaderboard({
           ) : (
             results.map((result, idx) => (
               <Card
-                key={result._id}
+                key={`${result.roomId}-${result.userId}`}
                 className={`${
                   result.userId === session?.user?.id
                     ? "border-2 border-primary bg-primary/5"
                     : ""
-                }`}
+                } ${result.dnf ? "opacity-70" : ""}`}
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -159,10 +163,23 @@ export function RoomLeaderboard({
                       </div>
                     </div>
 
-                    {/* You Badge */}
-                    {result.userId === session?.user?.id && (
-                      <Badge className="ml-4">You</Badge>
-                    )}
+                    <div className="flex flex-col items-end gap-1 ml-4">
+                      {result.userId === session?.user?.id && <Badge>You</Badge>}
+                      {result.dnf && (
+                        <Badge variant="secondary" title="Did not finish the contest">
+                          DNF
+                        </Badge>
+                      )}
+                      {result.flagged && (
+                        <Badge
+                          variant="outline"
+                          className="border-orange-500 text-orange-600"
+                          title="This result exceeded the plausibility ceiling and is flagged for review"
+                        >
+                          Flagged
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -211,20 +228,12 @@ export function RoomLeaderboard({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Winner WPM</span>
-                <span className="font-semibold">
-                  {results[0]?.wpm || "-"}
-                </span>
+                <span className="font-semibold">{finishers[0]?.wpm ?? "-"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Avg Accuracy</span>
                 <span className="font-semibold">
-                  {results.length > 0
-                    ? (
-                        results.reduce((sum, r) => sum + r.accuracy, 0) /
-                        results.length
-                      ).toFixed(1)
-                    : "-"}
-                  %
+                  {avgAccuracy !== null ? `${avgAccuracy.toFixed(1)}%` : "-"}
                 </span>
               </div>
             </CardContent>
@@ -232,12 +241,6 @@ export function RoomLeaderboard({
 
           {/* Actions */}
           <div className="space-y-2">
-            {onPlayAgain && (
-              <Button onClick={onPlayAgain} className="w-full">
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Play Again
-              </Button>
-            )}
             <Button onClick={onLeaveRoom} variant="outline" className="w-full">
               Leave Room
             </Button>
