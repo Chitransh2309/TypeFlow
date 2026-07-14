@@ -28,6 +28,7 @@ export function JoinRoomDialog() {
   const [password, setPassword] = useState("");
   const [roomDetails, setRoomDetails] = useState<any>(null);
   const [step, setStep] = useState<"input" | "confirm">("input");
+  const [passwordError, setPasswordError] = useState(false);
 
   const handleSearchRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +62,7 @@ export function JoinRoomDialog() {
       }
 
       // Join the room
-      await handleJoinRoom(room.roomId, room.isPublic ? undefined : password);
+      handleJoinRoom(room.roomId, room.isPublic ? undefined : password);
     } catch (error) {
       toast({
         title: "Error",
@@ -73,49 +74,53 @@ export function JoinRoomDialog() {
     }
   };
 
-  const handleJoinRoom = async (roomId: string, pwd?: string) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/rooms/${roomId}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: pwd,
-        }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to join room");
-      }
-
-      toast({ title: "Success", description: "Joined room successfully!" });
-      setOpen(false);
-      setRoomCode("");
-      setPassword("");
-      setStep("input");
-      setRoomDetails(null);
-      router.push(`/rooms/${roomId}`);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to join room",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  // The actual join (identity/atomicity/password check) happens once the room
+  // page's socket connects - this just navigates there, stashing a private
+  // room's password (never in a URL query string) for the room page to read once.
+  const handleJoinRoom = (roomId: string, pwd?: string) => {
+    if (pwd) sessionStorage.setItem(`room:pendingPassword:${roomId}`, pwd);
+    setOpen(false);
+    setRoomCode("");
+    setPassword("");
+    setPasswordError(false);
+    setStep("input");
+    setRoomDetails(null);
+    router.push(`/rooms/${roomId}`);
   };
 
   const handleConfirmJoin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordError(false);
 
     if (roomDetails?.isPublic === false && !password.trim()) {
       toast({ title: "Error", description: "Password is required for private rooms" });
       return;
     }
 
-    await handleJoinRoom(roomDetails.roomId, password);
+    if (roomDetails?.isPublic === false) {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/rooms/${roomDetails.roomId}/verify-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.valid) {
+          setPasswordError(true);
+          setIsLoading(false);
+          return;
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to verify password", variant: "destructive" });
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(false);
+    }
+
+    handleJoinRoom(roomDetails.roomId, password);
   };
 
   return (
@@ -201,9 +206,16 @@ export function JoinRoomDialog() {
                         type="password"
                         placeholder="Enter room password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          setPasswordError(false);
+                        }}
                         disabled={isLoading}
+                        aria-invalid={passwordError}
                       />
+                      {passwordError && (
+                        <p className="text-sm text-red-500">Password is wrong</p>
+                      )}
                     </div>
                   )}
 
@@ -215,6 +227,7 @@ export function JoinRoomDialog() {
                       onClick={() => {
                         setStep("input");
                         setPassword("");
+                        setPasswordError(false);
                         setRoomDetails(null);
                       }}
                       disabled={isLoading}

@@ -1,21 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import { Header } from "@/components/header";
-import {
-  RoomLobby,
-  RoomContest,
-  RoomLeaderboard,
-} from "@/components/rooms";
-import { useSocketRoom } from "@/hooks/use-socket-room";
+import { RoomLobby, RoomContest, RoomLeaderboard, type LiveProgressEntry } from "@/components/rooms";
+import { useSocketRoom, type ConnectionPhase } from "@/hooks/use-socket-room";
 import { Room } from "@/lib/models/room";
+import type { AckResponse } from "@/lib/socket-events";
 import { useToast } from "@/hooks/use-toast";
 import { Spinner } from "@/components/ui/spinner";
-import { getRandomWords } from "@/lib/words-data";
+import { Button } from "@/components/ui/button";
+import { AlertCircle } from "lucide-react";
 
-type RoomStatus = "loading" | "lobby" | "contest" | "finished" | "error";
+type PageStatus = "loading" | "ready" | "not-found";
+
+const PENDING_PASSWORD_PREFIX = "room:pendingPassword:";
+
+const CONTEST_FINISHED_MESSAGES: Record<string, string> = {
+  "all-finished": "Everyone finished!",
+  "time-expired": "Time's up!",
+  abandoned: "Everyone left - the contest was ended",
+};
+
+const ROOM_DELETED_MESSAGES: Record<string, string> = {
+  "host-left-empty": "The room was closed",
+  "waiting-expired": "This room expired from inactivity",
+};
 
 export default function RoomPage() {
   const params = useParams();
@@ -25,219 +36,191 @@ export default function RoomPage() {
   const { toast } = useToast();
 
   const [room, setRoom] = useState<Room | null>(null);
-  const [roomStatus, setRoomStatus] = useState<RoomStatus>("loading");
+  const [pageStatus, setPageStatus] = useState<PageStatus>("loading");
   const [testText, setTestText] = useState("");
+  const [contestStartMs, setContestStartMs] = useState<number | undefined>(undefined);
+  const [liveProgress, setLiveProgress] = useState<Record<string, LiveProgressEntry>>({});
   const [isStarting, setIsStarting] = useState(false);
-  const [hasJoined, setHasJoined] = useState(false);
+  const [pendingPassword, setPendingPassword] = useState<string | undefined>(undefined);
+  const [hasReadPassword, setHasReadPassword] = useState(false);
+  const passwordConsumedRef = useRef(false);
 
-  // Socket.io connection
-  const {
-    isConnected,
-    error: socketError,
-    sendProgress,
-    startContest,
-    endContest,
-    leaveRoom: socketLeaveRoom,
-  } = useSocketRoom({
-    roomId: hasJoined ? roomId : undefined,
-    userId: session?.user?.id,
-    userName: session?.user?.name,
-    onRoomUpdated: (data) => {
-      // Update room participants
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          participants: data.participants,
-          status: data.status as any,
-        };
-      });
-    },
-    onContestStarted: (data) => {
-      setTestText(data.testText);
-      setRoomStatus("contest");
-    },
-    onContestFinished: () => {
-      setRoomStatus("finished");
-    },
-  });
+  // A join dialog may have stashed a private room's password just before
+  // navigating here (never in a URL query string) - read it once and clear it.
+  // Guarded by a ref (not just the effect running once) because React Strict
+  // Mode double-invokes effects in development: without the guard, the second
+  // invocation finds the key already deleted and overwrites pendingPassword
+  // with undefined, silently turning every private-room join into one with no
+  // password.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (passwordConsumedRef.current) {
+      setHasReadPassword(true);
+      return;
+    }
+    passwordConsumedRef.current = true;
+    const key = `${PENDING_PASSWORD_PREFIX}${roomId}`;
+    const stashed = sessionStorage.getItem(key);
+    if (stashed) sessionStorage.removeItem(key);
+    setPendingPassword(stashed || undefined);
+    setHasReadPassword(true);
+  }, [roomId]);
 
-  // Fetch room details
+  // Non-live snapshot so there's something to render while the socket
+  // connects (and a way to distinguish "room truly doesn't exist" from
+  // "still connecting").
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
       return;
     }
+    if (status !== "authenticated") return;
 
-    if (status !== "authenticated" || !session?.user?.id) return;
-
-    const fetchRoom = async () => {
-      try {
-        const res = await fetch(`/api/rooms/${roomId}`);
-        if (!res.ok) {
-          throw new Error("Room not found");
-        }
-        const data: Room = await res.json();
+    fetch(`/api/rooms/${roomId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Room not found");
+        return res.json();
+      })
+      .then((data: Room) => {
         setRoom(data);
-        setRoomStatus(
-          data.status === "waiting"
-            ? "lobby"
-            : data.status === "active"
-              ? "contest"
-              : "finished"
-        );
+        setPageStatus("ready");
+      })
+      .catch(() => setPageStatus("not-found"));
+  }, [roomId, status, router]);
 
-        // Check if user is already in the room
-        const isInRoom = data.participants.some(
-          (p) => p.userId === session.user.id
-        );
-        if (!isInRoom) {
-          setHasJoined(false);
-        } else {
-          setHasJoined(true);
-        }
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to load room",
-          variant: "destructive",
-        });
-        setRoomStatus("error");
-        router.push("/rooms");
+  const {
+    connectionPhase,
+    joinStatus,
+    joinDeniedCode,
+    error: socketError,
+    sendProgress,
+    startContest,
+    submitResult,
+    leaveRoom,
+    retry,
+  } = useSocketRoom({
+    roomId: hasReadPassword ? roomId : undefined,
+    userId: session?.user?.id,
+    password: pendingPassword,
+    roomStatus: room?.status,
+    onJoined: (joinedRoom) => {
+      setRoom(joinedRoom);
+      // Reconnecting/joining an already-active room (e.g. a page refresh
+      // mid-contest) - contest:started won't fire again, so pick up the
+      // shared start time from the room snapshot itself.
+      if (joinedRoom.startedAt) {
+        setContestStartMs(new Date(joinedRoom.startedAt).getTime());
       }
-    };
-
-    fetchRoom();
-  }, [roomId, session, status, router, toast]);
-
-  const handleStartContest = async () => {
-    if (!session?.user?.id || !room) return;
-
-    // Check if user is host
-    if (room.host.userId !== session.user.id) {
+    },
+    onJoinError: (err) => {
+      toast({ title: "Couldn't join room", description: err, variant: "destructive" });
+    },
+    onRoomUpdated: (data) => {
+      setRoom((prev) =>
+        prev ? { ...prev, participants: data.participants, status: data.status } : prev
+      );
+    },
+    onParticipantConnectionChanged: (data) => {
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          participants: prev.participants.map((p) =>
+            p.userId === data.userId ? { ...p, connectionStatus: data.status } : p
+          ),
+        };
+      });
+    },
+    onHostChanged: (data) => {
+      setRoom((prev) =>
+        prev
+          ? { ...prev, host: { ...prev.host, userId: data.newHostUserId, userName: data.newHostUserName } }
+          : prev
+      );
+      toast({ title: "Host changed", description: `${data.newHostUserName} is now the host` });
+    },
+    onUserJoined: (data) => {
+      toast({ title: "User joined", description: `${data.userName} joined the room` });
+    },
+    onUserLeft: () => {
+      toast({ title: "User left", description: "A participant left the room" });
+    },
+    onContestStarted: (data) => {
+      setTestText(data.testText);
+      setContestStartMs(new Date(data.startedAt).getTime());
+      setLiveProgress({});
+      setRoom((prev) => (prev ? { ...prev, status: "active", testText: data.testText } : prev));
+    },
+    onProgressUpdate: (data) => {
+      setLiveProgress((prev) => ({
+        ...prev,
+        [data.userId]: {
+          userName: data.userName,
+          wpm: data.wpm,
+          accuracy: data.accuracy,
+          progress: data.progress,
+          isFinished: false,
+          dnf: false,
+        },
+      }));
+    },
+    onUserFinished: (data) => {
+      setLiveProgress((prev) => ({
+        ...prev,
+        [data.userId]: {
+          userName: prev[data.userId]?.userName || "",
+          wpm: data.wpm,
+          accuracy: data.accuracy,
+          progress: 100,
+          isFinished: true,
+          dnf: data.dnf,
+        },
+      }));
+    },
+    onContestFinished: (data) => {
+      setRoom((prev) => (prev ? { ...prev, status: "finished" } : prev));
+      toast({ title: "Contest finished", description: CONTEST_FINISHED_MESSAGES[data.reason] });
+    },
+    onRoomDeleted: (data) => {
       toast({
-        title: "Error",
-        description: "Only the host can start the contest",
+        title: "Room closed",
+        description: ROOM_DELETED_MESSAGES[data.reason],
         variant: "destructive",
-      });
-      return;
-    }
-
-    // Check minimum participants
-    if (room.participants.length < 2) {
-      toast({
-        title: "Error",
-        description: "Need at least 2 participants to start",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check room status
-    if (room.status !== "waiting") {
-      toast({
-        title: "Error",
-        description: "Contest has already started or finished",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsStarting(true);
-    try {
-      // Get test text based on room settings
-      let selectedWords: string[] = [];
-      const difficulty = (room.settings.difficulty || "normal") as "easy" | "normal" | "hard";
-
-      if (room.settings.mode === "words") {
-        const count = room.settings.wordCount || 50;
-        selectedWords = getRandomWords(count, difficulty);
-      } else {
-        // For time-based, use more words (enough for the duration)
-        const estimatedWords = (room.settings.timeLimit || 60) * 5; // assume 5 WPM at least
-        selectedWords = getRandomWords(estimatedWords, difficulty);
-      }
-
-      const text = selectedWords.join(" ");
-
-      // Start contest via API
-      const res = await fetch(`/api/rooms/${roomId}/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testText: text }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to start contest");
-      }
-
-      // Emit socket event
-      startContest(roomId, session.user.id, text);
-      setTestText(text);
-      setRoomStatus("contest");
-
-      toast({ title: "Success", description: "Contest started!" });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "Failed to start contest",
-        variant: "destructive",
-      });
-    } finally {
-      setIsStarting(false);
-    }
-  };
-
-  const handleLeaveRoom = async () => {
-    if (!session?.user?.id) return;
-
-    try {
-      // Emit socket event to notify server
-      socketLeaveRoom(roomId, session.user.id);
-
-      await fetch(`/api/rooms/${roomId}/leave`, {
-        method: "POST",
       });
       router.push("/rooms");
-      toast({ title: "Success", description: "Left the room" });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to leave room",
-        variant: "destructive",
-      });
-    }
-  };
+    },
+  });
 
-  // Cleanup on page unload or component unmount
-  useEffect(() => {
-    return () => {
-      // Attempt to leave room when component unmounts
-      if (hasJoined && session?.user?.id) {
-        socketLeaveRoom(roomId, session.user.id);
+  const handleStartContest = useCallback(() => {
+    setIsStarting(true);
+    startContest(roomId, (res: AckResponse) => {
+      setIsStarting(false);
+      if (!res.success) {
+        toast({ title: "Couldn't start contest", description: res.error, variant: "destructive" });
       }
-    };
-  }, [hasJoined, roomId, session?.user?.id, socketLeaveRoom]);
+    });
+  }, [roomId, startContest, toast]);
 
-  const handleEndContest = async () => {
-    if (!session?.user?.id || !room) return;
+  const handleLeaveRoom = useCallback(() => {
+    leaveRoom(roomId);
+    router.push("/rooms");
+  }, [roomId, leaveRoom, router]);
 
-    try {
-      endContest(roomId, session.user.id);
-      setRoomStatus("finished");
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to end contest",
-        variant: "destructive",
-      });
-    }
-  };
+  const handleSendProgress = useCallback(
+    (data: { charIndex: number; wpm: number; accuracy: number }) => {
+      sendProgress(roomId, data);
+    },
+    [roomId, sendProgress]
+  );
 
-  // Loading state
-  if (roomStatus === "loading") {
+  const handleSubmitResult = useCallback(
+    (data: { charsTyped: number; correctChars: number }, onResult?: (res: AckResponse) => void) => {
+      submitResult(roomId, data, onResult);
+    },
+    [roomId, submitResult]
+  );
+
+  if (pageStatus === "loading" || status === "loading") {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -248,13 +231,13 @@ export default function RoomPage() {
     );
   }
 
-  // Error state
-  if (roomStatus === "error" || !room) {
+  if (pageStatus === "not-found" || !room) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
-        <main className="flex-1 flex items-center justify-center">
-          <p className="text-gray-600">Failed to load room</p>
+        <main className="flex-1 flex flex-col items-center justify-center gap-4">
+          <p className="text-muted-foreground">This room doesn&apos;t exist or has been closed.</p>
+          <Button onClick={() => router.push("/rooms")}>Back to Rooms</Button>
         </main>
       </div>
     );
@@ -264,36 +247,99 @@ export default function RoomPage() {
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1 container py-8">
-        {roomStatus === "lobby" && (
+        {connectionPhase !== "connected" ? (
+          <ConnectingState phase={connectionPhase} error={socketError} onRetry={retry} />
+        ) : joinStatus === "denied" &&
+          !(joinDeniedCode === "not_waiting" && room.status === "finished" && room.isPublic) ? (
+          <JoinDeniedState error={socketError} onBack={() => router.push("/rooms")} />
+        ) : joinStatus !== "joined" && joinStatus !== "denied" ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+            <Spinner className="h-8 w-8 text-primary" />
+            <p className="font-medium">Joining room…</p>
+          </div>
+        ) : room.status === "waiting" ? (
           <RoomLobby
             room={room}
             onStartContest={handleStartContest}
             onLeaveRoom={handleLeaveRoom}
             isLoading={isStarting}
           />
-        )}
-
-        {roomStatus === "contest" && (
+        ) : room.status === "active" && contestStartMs !== undefined ? (
           <RoomContest
             room={room}
-            testText={testText}
+            testText={testText || room.testText || ""}
+            contestStartMs={contestStartMs}
+            currentUserId={session?.user?.id || ""}
+            liveProgress={liveProgress}
             onLeaveRoom={handleLeaveRoom}
-            onEndContest={handleEndContest}
+            onSendProgress={handleSendProgress}
+            onSubmitResult={handleSubmitResult}
           />
-        )}
-
-        {roomStatus === "finished" && (
-          <RoomLeaderboard
-            room={room}
-            onLeaveRoom={handleLeaveRoom}
-            onPlayAgain={() => {
-              setRoomStatus("lobby");
-              setTestText("");
-              window.location.reload();
-            }}
-          />
+        ) : room.status === "active" ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+            <Spinner className="h-8 w-8 text-primary" />
+          </div>
+        ) : (
+          <RoomLeaderboard room={room} onLeaveRoom={handleLeaveRoom} />
         )}
       </main>
+    </div>
+  );
+}
+
+function ConnectingState({
+  phase,
+  error,
+  onRetry,
+}: {
+  phase: ConnectionPhase;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (phase === "failed") {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <div>
+          <p className="font-semibold">Couldn&apos;t connect to the game server</p>
+          {error && <p className="text-sm text-muted-foreground mt-1">{error}</p>}
+        </div>
+        <Button onClick={onRetry}>Retry</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+      <Spinner className="h-8 w-8 text-primary" />
+      <p className="font-medium">
+        {phase === "waking" ? "Waking up the game server…" : "Connecting…"}
+      </p>
+      {phase === "waking" && (
+        <p className="text-sm text-muted-foreground max-w-sm">
+          This server spins down when idle to stay free to run - it can take up to a
+          minute to wake back up. Thanks for your patience.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function JoinDeniedState({
+  error,
+  onBack,
+}: {
+  error: string | null;
+  onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+      <AlertCircle className="h-10 w-10 text-destructive" />
+      <div>
+        <p className="font-semibold">Couldn&apos;t join room</p>
+        {error && <p className="text-sm text-muted-foreground mt-1">{error}</p>}
+      </div>
+      <Button onClick={onBack}>Back to Rooms</Button>
     </div>
   );
 }

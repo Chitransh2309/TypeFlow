@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "../lib/models/room.ts",
+    "../lib/socket-events.ts",
+    "../lib/room-id.ts",
+    "../lib/password.ts",
+    "../lib/anti-cheat.ts",
+    "../lib/words-data.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

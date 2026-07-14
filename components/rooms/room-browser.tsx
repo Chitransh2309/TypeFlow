@@ -27,7 +27,8 @@ export function RoomBrowser() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [joinPassword, setJoinPassword] = useState("");
-  const [isJoining, setIsJoining] = useState(false);
+  const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState(false);
 
   // Fetch public rooms
   useEffect(() => {
@@ -54,41 +55,48 @@ export function RoomBrowser() {
     return () => clearInterval(interval);
   }, [toast]);
 
-  const handleJoinRoom = async (room: Room) => {
-    if (!room.isPublic && !joinPassword) {
+  // The actual join (identity/atomicity/password check) happens once the room
+  // page's socket connects - this just navigates there, stashing a private
+  // room's password (never in a URL query string) for the room page to read once.
+  const handleJoinRoom = (room: Room) => {
+    if (!room.isPublic) {
       setSelectedRoom(room);
       return;
     }
-    await joinRoomConfirm(room);
+    navigateToRoom(room);
   };
 
-  const joinRoomConfirm = async (room: Room) => {
-    setIsJoining(true);
+  const navigateToRoom = (room: Room, password?: string) => {
+    setJoiningRoomId(room.roomId);
+    if (password) {
+      sessionStorage.setItem(`room:pendingPassword:${room.roomId}`, password);
+    }
+    router.push(`/rooms/${room.roomId}`);
+  };
+
+  const handleJoinPrivateRoom = async () => {
+    if (!selectedRoom) return;
+    setPasswordError(false);
+    setJoiningRoomId(selectedRoom.roomId);
     try {
-      const res = await fetch(`/api/rooms/${room.roomId}/join`, {
+      const res = await fetch(`/api/rooms/${selectedRoom.roomId}/verify-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: joinPassword || undefined }),
+        body: JSON.stringify({ password: joinPassword }),
       });
+      const data = await res.json();
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to join room");
+      if (!res.ok || !data.valid) {
+        setPasswordError(true);
+        setJoiningRoomId(null);
+        return;
       }
-
-      toast({ title: "Success", description: `Joined room "${room.name}"` });
-      setSelectedRoom(null);
-      setJoinPassword("");
-      router.push(`/rooms/${room.roomId}`);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to join room",
-        variant: "destructive",
-      });
-    } finally {
-      setIsJoining(false);
+    } catch {
+      toast({ title: "Error", description: "Failed to verify password", variant: "destructive" });
+      setJoiningRoomId(null);
+      return;
     }
+    navigateToRoom(selectedRoom, joinPassword);
   };
 
   const filteredRooms = rooms.filter((room) =>
@@ -127,14 +135,19 @@ export function RoomBrowser() {
           {filteredRooms.map((room) => (
             <Card key={room.roomId} className="overflow-hidden hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <CardTitle className="text-lg">{room.name}</CardTitle>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-lg">{room.name}</CardTitle>
+                      <Badge variant={room.isPublic ? "default" : "secondary"} className="text-xs">
+                        {room.isPublic ? "Public" : "Private"}
+                      </Badge>
+                    </div>
                     <CardDescription className="text-xs mt-1">
                       Room ID: {room.roomId}
                     </CardDescription>
                   </div>
-                  {!room.isPublic && <Lock className="h-4 w-4 text-yellow-600" />}
+                  {!room.isPublic && <Lock className="h-4 w-4 text-yellow-600 mt-1 flex-shrink-0" />}
                 </div>
               </CardHeader>
 
@@ -177,11 +190,11 @@ export function RoomBrowser() {
                 <Button
                   onClick={() => handleJoinRoom(room)}
                   disabled={
-                    room.participants.length >= room.maxParticipants || isJoining
+                    room.participants.length >= room.maxParticipants || joiningRoomId === room.roomId
                   }
                   className="w-full"
                 >
-                  {isJoining ? (
+                  {joiningRoomId === room.roomId ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Joining...
@@ -197,7 +210,16 @@ export function RoomBrowser() {
       )}
 
       {/* Join Private Room Dialog */}
-      <Dialog open={!!selectedRoom} onOpenChange={(open) => !open && setSelectedRoom(null)}>
+      <Dialog
+        open={!!selectedRoom}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedRoom(null);
+            setJoinPassword("");
+            setPasswordError(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Join Private Room</DialogTitle>
@@ -206,20 +228,29 @@ export function RoomBrowser() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <Input
-              type="password"
-              placeholder="Enter room password"
-              value={joinPassword}
-              onChange={(e) => setJoinPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && selectedRoom && joinRoomConfirm(selectedRoom)}
-              disabled={isJoining}
-            />
+            <div className="space-y-2">
+              <Input
+                type="password"
+                placeholder="Enter room password"
+                value={joinPassword}
+                onChange={(e) => {
+                  setJoinPassword(e.target.value);
+                  setPasswordError(false);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleJoinPrivateRoom()}
+                disabled={joiningRoomId === selectedRoom?.roomId}
+                aria-invalid={passwordError}
+              />
+              {passwordError && (
+                <p className="text-sm text-red-500">Password is wrong</p>
+              )}
+            </div>
             <Button
-              onClick={() => selectedRoom && joinRoomConfirm(selectedRoom)}
-              disabled={isJoining || !joinPassword}
+              onClick={handleJoinPrivateRoom}
+              disabled={joiningRoomId === selectedRoom?.roomId || !joinPassword}
               className="w-full"
             >
-              {isJoining ? (
+              {joiningRoomId === selectedRoom?.roomId ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Joining...

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/header";
@@ -10,6 +11,15 @@ import { Spinner } from "@/components/ui/spinner";
 
 export default function RoomsPage() {
   const { data: session, status } = useSession();
+
+  // Fire-and-forget: wake the (possibly-sleeping, free-tier) socket-server as
+  // early as possible, so by the time the user creates/joins a room it's
+  // often already warm.
+  useEffect(() => {
+    const socketServerUrl = process.env.NEXT_PUBLIC_SOCKET_SERVER_URL;
+    if (!socketServerUrl) return;
+    fetch(`${socketServerUrl}/health`, { cache: "no-store" }).catch(() => {});
+  }, []);
 
   if (status === "loading") {
     return (

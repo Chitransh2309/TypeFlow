@@ -89,10 +89,21 @@ export const quotes = [
   }
 ];
 
+// Fisher-Yates shuffle, cycling through the source list as many times as
+// needed so `count` can exceed the list length (e.g. long time-mode tests
+// need more words than any single difficulty list contains).
 export function getRandomWords(count: number, difficulty: "easy" | "medium" | "hard" = "easy"): string[] {
   const wordList = wordsByDifficulty[difficulty];
-  const shuffled = [...wordList].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  const result: string[] = [];
+  while (result.length < count) {
+    const shuffled = [...wordList];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    result.push(...shuffled);
+  }
+  return result.slice(0, count);
 }
 
 export function getRandomQuote(difficulty?: "easy" | "medium" | "hard") {
