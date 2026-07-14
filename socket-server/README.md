@@ -46,10 +46,14 @@ into the Root Directory to run commands, so the sibling `lib/` folder is present
 
 Render service settings:
 - **Root Directory**: `socket-server`
-- **Build Command**: `npm install --prefix .. && npm install && npm run build`
+- **Build Command**: `npm install --prefix .. --legacy-peer-deps && npm install --legacy-peer-deps && npm run build`
   (the `--prefix ..` step installs the root `package.json`'s dependencies - specifically
   `nanoid` and `bcryptjs`, needed because `../lib/room-id.ts` and `../lib/password.ts`
-  live outside this directory and esbuild needs to resolve+inline them at build time)
+  live outside this directory and esbuild needs to resolve+inline them at build time.
+  `--legacy-peer-deps` is required there: the root project intentionally runs a few
+  slightly mismatched peer versions - e.g. `@auth/core@0.37.4` wants
+  `@simplewebauthn/browser@^9` but the root pins `^10` - which pnpm (used locally/on
+  Vercel) just warns about, but plain npm treats as a hard ERESOLVE failure)
 - **Start Command**: `npm start`
 - **Health Check Path**: `/health`
 - **Environment**: copy `.env.example`'s keys into Render's environment variables,
